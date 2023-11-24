@@ -192,7 +192,9 @@ impl ops::Mul<&BinaryMatrix64> for &BinaryDenseVector {
 mod test {
     use super::*;
     use crate::binary_dense_vector::BinaryDenseVector;
+    #[cfg(feature = "rand")]
     use rand::prelude::*;
+    #[cfg(feature = "rand")]
     use rand_chacha::ChaCha8Rng;
 
     #[test]
@@ -221,6 +223,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "rand")]
     fn test_large_left_kernel() {
         let mut rng = ChaCha8Rng::seed_from_u64(1234);
         let mat = BinaryMatrix64::random(1024, 1024, &mut rng);
