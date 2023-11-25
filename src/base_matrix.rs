@@ -2,6 +2,24 @@ use crate::binary_dense_vector::{BinaryDenseVector, BITS};
 use std::fmt::Write;
 use std::{fmt, ops};
 
+pub(crate) fn binary_matrix_fmt(s: &dyn BinaryMatrix, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.write_char('[')?;
+    for r in 0..s.nrows() {
+        if r != 0 {
+            f.write_str(", ")?;
+        }
+        f.write_char('[')?;
+        for c in 0..s.ncols() {
+            if c != 0 {
+                f.write_str(", ")?;
+            }
+            f.write_char(char::from(48 + s.get(r, c)))?;
+        }
+        f.write_char(']')?;
+    }
+    f.write_char(']')
+}
+
 /// Trait for binary (GF(2)) matrices.
 pub trait BinaryMatrix {
     /// Number of rows.
@@ -168,20 +186,6 @@ impl ops::Mul<Box<dyn BinaryMatrix>> for &BinaryDenseVector {
 
 impl fmt::Debug for dyn BinaryMatrix {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_char('[')?;
-        for r in 0..self.nrows() {
-            if r != 0 {
-                f.write_str(", ")?;
-            }
-            f.write_char('[')?;
-            for c in 0..self.ncols() {
-                if c != 0 {
-                    f.write_str(", ")?;
-                }
-                f.write_char(char::from(48 + self.get(r, c)))?;
-            }
-            f.write_char(']')?;
-        }
-        f.write_char(']')
+        binary_matrix_fmt(self, f)
     }
 }

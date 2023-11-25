@@ -1,9 +1,9 @@
-use crate::base_matrix::BinaryMatrix;
+use crate::base_matrix::{binary_matrix_fmt, BinaryMatrix};
 use crate::binary_dense_vector::{BinaryDenseVector, BITS};
 #[cfg(feature = "rand")]
 use rand::Rng;
 use std::fmt;
-use std::fmt::{Debug, Write};
+use std::fmt::Debug;
 use std::ops;
 
 /// A dense, binary matrix implementation by packing bits
@@ -16,7 +16,7 @@ pub struct BinaryMatrix64 {
 
 impl BinaryMatrix64 {
     /// Returns a new, empty matrix with zero rows and columns.
-    pub fn new() -> Box<dyn BinaryMatrix> {
+    pub fn new() -> Box<BinaryMatrix64> {
         Box::new(BinaryMatrix64 {
             nrows: 0,
             columns: vec![],
@@ -146,21 +146,7 @@ impl BinaryMatrix for BinaryMatrix64 {
 
 impl Debug for BinaryMatrix64 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_char('[')?;
-        for r in 0..self.nrows() {
-            if r != 0 {
-                f.write_str(", ")?;
-            }
-            f.write_char('[')?;
-            for c in 0..self.ncols() {
-                if c != 0 {
-                    f.write_str(", ")?;
-                }
-                f.write_char(char::from(48 + self[(r, c)]))?;
-            }
-            f.write_char(']')?;
-        }
-        f.write_char(']')
+        binary_matrix_fmt(self, f)
     }
 }
 

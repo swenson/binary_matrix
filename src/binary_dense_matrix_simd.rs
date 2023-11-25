@@ -1,9 +1,9 @@
-use crate::base_matrix::BinaryMatrix;
+use crate::base_matrix::{binary_matrix_fmt, BinaryMatrix};
 use crate::binary_dense_vector::{BinaryDenseVector, BITS};
 #[cfg(feature = "rand")]
 use rand::Rng;
 use std::fmt;
-use std::fmt::{Debug, Write};
+use std::fmt::Debug;
 use std::ops;
 use std::simd::{LaneCount, Simd, SupportedLaneCount};
 
@@ -111,17 +111,6 @@ where
         }
     }
 
-    fn copy(&self) -> Box<dyn BinaryMatrix> {
-        let mut cols = vec![];
-        for c in 0..self.columns.len() {
-            cols.push(self.columns[c].clone());
-        }
-        Box::new(BinaryMatrixSimd {
-            nrows: self.nrows,
-            columns: cols,
-        })
-    }
-
     // TODO: bit tilt algorithm?
     fn transpose(&self) -> Box<dyn BinaryMatrix> {
         let mut new = BinaryMatrixSimd::new();
@@ -152,6 +141,17 @@ where
         } else {
             self.columns[c][row_idx].as_mut_array()[lane_idx] &= !(1 << shift);
         }
+    }
+
+    fn copy(&self) -> Box<dyn BinaryMatrix> {
+        let mut cols = vec![];
+        for c in 0..self.columns.len() {
+            cols.push(self.columns[c].clone());
+        }
+        Box::new(BinaryMatrixSimd {
+            nrows: self.nrows,
+            columns: cols,
+        })
     }
 
     fn swap_columns(&mut self, c1: usize, c2: usize) -> () {
@@ -191,21 +191,7 @@ where
     LaneCount<LANES>: SupportedLaneCount,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_char('[')?;
-        for r in 0..self.nrows() {
-            if r != 0 {
-                f.write_str(", ")?;
-            }
-            f.write_char('[')?;
-            for c in 0..self.ncols() {
-                if c != 0 {
-                    f.write_str(", ")?;
-                }
-                f.write_char(char::from(48 + self[(r, c)]))?;
-            }
-            f.write_char(']')?;
-        }
-        f.write_char(']')
+        binary_matrix_fmt(self, f)
     }
 }
 
