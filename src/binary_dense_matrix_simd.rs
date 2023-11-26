@@ -1,4 +1,4 @@
-use crate::base_matrix::{binary_matrix_fmt, BinaryMatrix};
+use crate::base_matrix::{binary_matrix_fmt, slow_transpose, BinaryMatrix};
 use crate::binary_dense_vector::{BinaryDenseVector, BITS};
 #[cfg(feature = "rand")]
 use rand::Rng;
@@ -23,7 +23,7 @@ where
     LaneCount<LANES>: SupportedLaneCount,
 {
     /// Returns a new, empty matrix with zero rows and columns.
-    pub fn new() -> Box<dyn BinaryMatrix> {
+    pub fn new() -> Box<BinaryMatrixSimd<LANES>> {
         Box::new(BinaryMatrixSimd {
             nrows: 0,
             columns: vec![],
@@ -114,13 +114,8 @@ where
     // TODO: bit tilt algorithm?
     fn transpose(&self) -> Box<dyn BinaryMatrix> {
         let mut new = BinaryMatrixSimd::new();
-        new.expand(self.ncols(), self.nrows());
-        for c in 0..self.columns.len() {
-            for r in 0..self.nrows {
-                new.set(c, r, self[(r, c)]);
-            }
-        }
-        new
+        slow_transpose(self, new.as_mut());
+        new as Box<dyn BinaryMatrix>
     }
 
     fn get(&self, r: usize, c: usize) -> u8 {

@@ -20,6 +20,18 @@ pub(crate) fn binary_matrix_fmt(s: &dyn BinaryMatrix, f: &mut fmt::Formatter<'_>
     f.write_char(']')
 }
 
+pub(crate) fn slow_transpose<T>(s: &T, new: &mut T)
+where
+    T: BinaryMatrix,
+{
+    new.expand(s.ncols(), s.nrows());
+    for c in 0..s.ncols() {
+        for r in 0..s.nrows() {
+            new.set(c, r, s.get(r, c));
+        }
+    }
+}
+
 /// Trait for binary (GF(2)) matrices.
 pub trait BinaryMatrix {
     /// Number of rows.
@@ -35,10 +47,7 @@ pub trait BinaryMatrix {
     /// Sets the value of the matrix at the row r and column c to val.
     fn set(&mut self, r: usize, c: usize, val: u8);
     /// Returns a copy of this matrix.
-    fn copy(&self) -> Box<dyn BinaryMatrix> {
-        self.transpose().transpose()
-    }
-
+    fn copy(&self) -> Box<dyn BinaryMatrix>;
     /// Compute the left kernel of the matrix.
     /// Uses using basic algorithm, using Gaussian elimination, from
     /// <https://en.wikipedia.org/wiki/Kernel_(linear_algebra)#Computation_by_Gaussian_elimination>
@@ -94,7 +103,7 @@ pub trait BinaryMatrix {
 
         Some(kernel)
     }
-    /// Multpilies the given matrix on the left by the dense vector.
+    /// Multiplies the given matrix on the left by the dense vector.
     fn left_mul(&self, result_vector: &BinaryDenseVector) -> BinaryDenseVector {
         assert_eq!(result_vector.size, self.nrows());
         let mut result = Vec::with_capacity(self.ncols());
@@ -107,7 +116,7 @@ pub trait BinaryMatrix {
         }
         BinaryDenseVector::from_bits(&*result)
     }
-
+    /// Returns a copy of the column as a BinaryDenseVector.
     fn col(&self, c: usize) -> BinaryDenseVector {
         assert!(c < self.ncols());
         let mut v = BinaryDenseVector::zero(self.nrows());
@@ -116,7 +125,6 @@ pub trait BinaryMatrix {
         }
         v
     }
-
     /// Swaps the columns of the matrix.
     fn swap_columns(&mut self, c1: usize, c2: usize);
     /// XORs the values of columns c2 into c1.

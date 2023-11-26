@@ -1,4 +1,4 @@
-use crate::base_matrix::{binary_matrix_fmt, BinaryMatrix};
+use crate::base_matrix::{binary_matrix_fmt, slow_transpose, BinaryMatrix};
 use crate::binary_dense_vector::{BinaryDenseVector, BITS};
 #[cfg(feature = "rand")]
 use rand::Rng;
@@ -79,13 +79,8 @@ impl BinaryMatrix for BinaryMatrix64 {
     // TODO: bit tilt algorithm?
     fn transpose(&self) -> Box<dyn BinaryMatrix> {
         let mut new = BinaryMatrix64::new();
-        new.expand(self.ncols(), self.nrows());
-        for c in 0..self.columns.len() {
-            for r in 0..self.nrows {
-                new.set(c, r, self[(r, c)]);
-            }
-        }
-        new
+        slow_transpose(self, new.as_mut());
+        new as Box<dyn BinaryMatrix>
     }
 
     fn get(&self, r: usize, c: usize) -> u8 {
