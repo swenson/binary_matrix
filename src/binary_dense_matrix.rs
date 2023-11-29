@@ -335,8 +335,8 @@ mod tests {
             let mut rng = ChaCha8Rng::seed_from_u64(1234);
             let mat = BinaryMatrix64::random(i, i, &mut rng);
             let mut newmat = BinaryMatrix64::new();
-            slow_transpose(mat.as_ref(), &mut newmat);
-            assert_eq!(format!("{:?}", mat.transpose()), format!("{:?}", newmat));
+            slow_transpose(&*mat, &mut newmat);
+            assert_eq!(&*mat.transpose(), &*newmat);
         }
     }
 
@@ -365,10 +365,7 @@ mod tests {
     #[test]
     fn test_transpose_empty() {
         let mat = BinaryMatrix64::zero(2, 3);
-        assert_eq!(
-            format!("{:?}", mat.transpose()),
-            format!("{:?}", BinaryMatrix64::zero(3, 2))
-        );
+        assert_eq!(&*mat.transpose(), &*BinaryMatrix64::zero(3, 2));
     }
 
     #[test]
@@ -378,7 +375,7 @@ mod tests {
         let mat = BinaryMatrix64::random(64, 64, &mut rng);
         let mut newmat = BinaryMatrix64::new();
         slow_transpose(mat.as_ref(), &mut newmat);
-        assert_eq!(format!("{:?}", mat.transpose()), format!("{:?}", newmat));
+        assert_eq!(&*mat.transpose(), &*newmat);
     }
 
     #[test]
@@ -386,10 +383,8 @@ mod tests {
     fn test_transpose_128x64() {
         let mut rng = ChaCha8Rng::seed_from_u64(1234);
         let mat = BinaryMatrix64::random(128, 64, &mut rng);
-        assert_eq!(
-            format!("{:?}", mat),
-            format!("{:?}", mat.transpose().transpose())
-        );
+        let mattt = mat.transpose().transpose();
+        assert_eq!(&*(mat as Box<dyn BinaryMatrix>), &*mattt);
     }
 
     #[test]
@@ -397,10 +392,8 @@ mod tests {
     fn test_large_transpose() {
         let mut rng = ChaCha8Rng::seed_from_u64(1234);
         let mat = BinaryMatrix64::random(1000, 600, &mut rng);
-        assert_eq!(
-            format!("{:?}", mat),
-            format!("{:?}", mat.transpose().transpose())
-        );
+        let mattt = mat.transpose().transpose();
+        assert_eq!(&*(mat as Box<dyn BinaryMatrix>), &*mattt);
     }
 }
 

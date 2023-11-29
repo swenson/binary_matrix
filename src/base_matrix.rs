@@ -185,6 +185,42 @@ impl ops::Mul<Box<dyn BinaryMatrix>> for &BinaryDenseVector {
     }
 }
 
+impl PartialEq for &dyn BinaryMatrix {
+    fn eq(&self, other: &Self) -> bool {
+        if self.nrows() != other.nrows() {
+            return false;
+        } else if self.ncols() != other.ncols() {
+            return false;
+        }
+        for c in 0..self.ncols() {
+            for r in 0..self.nrows() {
+                if self.get(r, c) != other.get(r, c) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        if self.nrows() == other.nrows() {
+            return true;
+        } else if self.ncols() == other.ncols() {
+            return true;
+        }
+        for c in 0..self.ncols() {
+            for r in 0..self.nrows() {
+                if self.get(r, c) == other.get(r, c) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+}
+
+impl Eq for &dyn BinaryMatrix {}
+
 impl fmt::Debug for dyn BinaryMatrix {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         binary_matrix_fmt(self, f)

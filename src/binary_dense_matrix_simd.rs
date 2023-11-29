@@ -291,8 +291,8 @@ mod test {
     fn test_transpose_empty() {
         let mat = BinaryMatrixSimd::<64>::zero(2, 3);
         assert_eq!(
-            format!("{:?}", mat.transpose()),
-            format!("{:?}", BinaryMatrixSimd::<64>::zero(3, 2))
+            &*mat.transpose(),
+            &*(BinaryMatrixSimd::<64>::zero(3, 2) as Box<dyn BinaryMatrix>)
         );
     }
 
@@ -301,11 +301,10 @@ mod test {
     fn test_as_simd() {
         let mut rng = ChaCha8Rng::seed_from_u64(1234);
         let mat = BinaryMatrix64::random(129, 129, &mut rng);
-        assert_eq!(format!("{:?}", mat), format!("{:?}", mat.as_simd::<2>()));
-        assert_eq!(
-            format!("{:?}", mat),
-            format!("{:?}", mat.as_simd::<2>().as_nonsimd())
-        );
+        let matsimd = (&mat).as_simd::<2>();
+        let mat2 = (&matsimd).as_nonsimd();
+        assert_eq!(&*mat as &dyn BinaryMatrix, &*matsimd);
+        assert_eq!(mat, mat2);
     }
 }
 
