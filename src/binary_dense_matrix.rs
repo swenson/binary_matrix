@@ -45,6 +45,41 @@ impl BinaryMatrix64 {
         mat
     }
 
+    pub(crate) fn transpose64(&self) -> Box<BinaryMatrix64> {
+        let mut new = BinaryMatrix64::new();
+        if self.nrows >= 64 && self.columns.len() >= 64 {
+            new.expand(self.columns.len(), self.nrows);
+            let n = (self.nrows & 0xffffffffffffffc0).min(self.columns.len() & 0xffffffffffffffc0);
+            for i in (0..n).step_by(64) {
+                for j in (i..n).step_by(64) {
+                    if i == j {
+                        let a = self.subtranspose(i, i);
+                        new.write_submatrix(i, i, &a);
+                    } else {
+                        let a = self.subtranspose(i, j);
+                        let b = self.subtranspose(j, i);
+                        new.write_submatrix(i, j, &b);
+                        new.write_submatrix(j, i, &a);
+                    }
+                }
+            }
+            // slow way for the leftovers
+            for c in n..self.columns.len() {
+                for r in 0..self.nrows {
+                    new.set(c, r, self.get(r, c));
+                }
+            }
+            for r in n..self.nrows {
+                for c in 0..self.columns.len() {
+                    new.set(c, r, self.get(r, c));
+                }
+            }
+            return new;
+        }
+        slow_transpose(self, new.as_mut());
+        new
+    }
+
     #[cfg(feature = "simd")]
     pub fn as_simd<const LANES: usize>(&self) -> Box<BinaryMatrixSimd<LANES>>
     where
@@ -122,38 +157,7 @@ impl BinaryMatrix for BinaryMatrix64 {
     }
 
     fn transpose(&self) -> Box<dyn BinaryMatrix> {
-        let mut new = BinaryMatrix64::new();
-        if self.nrows >= 64 && self.columns.len() >= 64 {
-            new.expand(self.columns.len(), self.nrows);
-            let n = (self.nrows & 0xffffffffffffffc0).min(self.columns.len() & 0xffffffffffffffc0);
-            for i in (0..n).step_by(64) {
-                for j in (i..n).step_by(64) {
-                    if i == j {
-                        let a = self.subtranspose(i, i);
-                        new.write_submatrix(i, i, &a);
-                    } else {
-                        let a = self.subtranspose(i, j);
-                        let b = self.subtranspose(j, i);
-                        new.write_submatrix(i, j, &b);
-                        new.write_submatrix(j, i, &a);
-                    }
-                }
-            }
-            // slow way for the leftovers
-            for c in n..self.columns.len() {
-                for r in 0..self.nrows {
-                    new.set(c, r, self.get(r, c));
-                }
-            }
-            for r in n..self.nrows {
-                for c in 0..self.columns.len() {
-                    new.set(c, r, self.get(r, c));
-                }
-            }
-            return new as Box<dyn BinaryMatrix>;
-        }
-        slow_transpose(self, new.as_mut());
-        new as Box<dyn BinaryMatrix>
+        self.transpose64() as Box<dyn BinaryMatrix>
     }
 
     fn get(&self, r: usize, c: usize) -> u8 {

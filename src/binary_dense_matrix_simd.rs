@@ -1,12 +1,12 @@
-use crate::base_matrix::{binary_matrix_fmt, slow_transpose, BinaryMatrix};
+use crate::base_matrix::{binary_matrix_fmt, BinaryMatrix};
 use crate::binary_dense_vector::{BinaryDenseVector, BITS};
+use crate::BinaryMatrix64;
 #[cfg(feature = "rand")]
 use rand::Rng;
 use std::fmt;
 use std::fmt::Debug;
 use std::ops;
 use std::simd::{LaneCount, Simd, SupportedLaneCount};
-use crate::BinaryMatrix64;
 
 /// A dense, binary matrix implementation by packing bits
 /// into simd arrays of u64 of size LANES. Column-oriented.
@@ -56,7 +56,7 @@ where
             for j in 0..self.columns[0].len() {
                 for l in 0..LANES {
                     if j * LANES + l >= mat.columns[c].len() {
-                        break
+                        break;
                     }
                     mat.columns[c][j * LANES + l] = self.columns[c][j][l];
                 }
@@ -128,16 +128,14 @@ where
     }
 
     // TODO: use those nice SIMD instructions somehow to do this faster
-    // TODO: or at least downcast to a BinaryMatrix64 and use the faster 64x64 transpose.
     fn transpose(&self) -> Box<dyn BinaryMatrix> {
-        let mut new = BinaryMatrixSimd::new();
-        slow_transpose(self, new.as_mut());
-        new as Box<dyn BinaryMatrix>
+        self.as_nonsimd().transpose64() as Box<dyn BinaryMatrix>
     }
 
     fn get(&self, r: usize, c: usize) -> u8 {
         assert!(r < self.nrows);
-        let x = self.columns[c][r >> self.simd_bits()][(r >> u64::BITS.trailing_zeros()) & self.simd_lane_mask()];
+        let x = self.columns[c][r >> self.simd_bits()]
+            [(r >> u64::BITS.trailing_zeros()) & self.simd_lane_mask()];
         let shift = self.simd_base_mask() - (r & self.simd_base_mask());
         ((x >> shift) & 1) as u8
     }
@@ -304,6 +302,48 @@ mod test {
         let mut rng = ChaCha8Rng::seed_from_u64(1234);
         let mat = BinaryMatrix64::random(129, 129, &mut rng);
         assert_eq!(format!("{:?}", mat), format!("{:?}", mat.as_simd::<2>()));
-        assert_eq!(format!("{:?}", mat), format!("{:?}", mat.as_simd::<2>().as_nonsimd()));
+        assert_eq!(
+            format!("{:?}", mat),
+            format!("{:?}", mat.as_simd::<2>().as_nonsimd())
+        );
+    }
+}
+
+#[cfg(test)]
+mod bench {
+    extern crate test;
+    use crate::{BinaryMatrix, BinaryMatrixSimd};
+    use test::bench::Bencher;
+
+    #[bench]
+    fn bench_transpose_simd_64x64(b: &mut Bencher) {
+        let mat = BinaryMatrixSimd::<64>::identity(64);
+        b.iter(|| {
+            test::black_box(mat.transpose());
+        });
+    }
+
+    #[bench]
+    fn bench_transpose_simd_100x100(b: &mut Bencher) {
+        let mat = BinaryMatrixSimd::<64>::identity(100);
+        b.iter(|| {
+            test::black_box(mat.transpose());
+        });
+    }
+
+    #[bench]
+    fn bench_transpose_simd_1000x1000(b: &mut Bencher) {
+        let mat = BinaryMatrixSimd::<64>::identity(1000);
+        b.iter(|| {
+            test::black_box(mat.transpose());
+        });
+    }
+
+    #[bench]
+    fn bench_transpose_simd_10000x10000(b: &mut Bencher) {
+        let mat = BinaryMatrixSimd::<64>::identity(10000);
+        b.iter(|| {
+            test::black_box(mat.transpose());
+        });
     }
 }
