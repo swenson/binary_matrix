@@ -6,6 +6,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::ops;
 use std::simd::{LaneCount, Simd, SupportedLaneCount};
+use crate::BinaryMatrix64;
 
 /// A dense, binary matrix implementation by packing bits
 /// into simd arrays of u64 of size LANES. Column-oriented.
@@ -15,7 +16,7 @@ where
     LaneCount<LANES>: SupportedLaneCount,
 {
     nrows: usize,
-    columns: Vec<Vec<Simd<u64, LANES>>>,
+    pub(crate) columns: Vec<Vec<Simd<u64, LANES>>>,
 }
 
 impl<const LANES: usize> BinaryMatrixSimd<LANES>
@@ -45,6 +46,21 @@ where
         let mut mat = BinaryMatrixSimd::zero(rows, rows);
         for i in 0..rows {
             mat.set(i, i, 1);
+        }
+        mat
+    }
+
+    pub fn as_nonsimd(&self) -> Box<BinaryMatrix64> {
+        let mut mat = BinaryMatrix64::zero(self.nrows, self.ncols());
+        for c in 0..self.ncols() {
+            for j in 0..self.columns[0].len() {
+                for l in 0..LANES {
+                    if j * LANES + l >= mat.columns[c].len() {
+                        break
+                    }
+                    mat.columns[c][j * LANES + l] = self.columns[c][j][l];
+                }
+            }
         }
         mat
     }
@@ -121,16 +137,15 @@ where
 
     fn get(&self, r: usize, c: usize) -> u8 {
         assert!(r < self.nrows);
-        let x = self.columns[c][r >> self.simd_bits()].as_array()
-            [(r >> u64::BITS.trailing_zeros()) & self.simd_lane_mask()];
-        let shift = r & self.simd_base_mask();
+        let x = self.columns[c][r >> self.simd_bits()][(r >> u64::BITS.trailing_zeros()) & self.simd_lane_mask()];
+        let shift = self.simd_base_mask() - (r & self.simd_base_mask());
         ((x >> shift) & 1) as u8
     }
 
     fn set(&mut self, r: usize, c: usize, val: u8) {
         assert!(r < self.nrows);
-        let shift = r & self.simd_base_mask();
-        let row_idx = r >> self.simd_bits();
+        let shift = self.simd_base_mask() - (r & self.simd_base_mask());
+        let row_idx = r >> self.simd_bits(); // >> 12
         let lane_idx = (r >> u64::BITS.trailing_zeros()) & self.simd_lane_mask();
         if val == 1 {
             self.columns[c][row_idx].as_mut_array()[lane_idx] |= 1 << shift;
@@ -281,5 +296,14 @@ mod test {
             format!("{:?}", mat.transpose()),
             format!("{:?}", BinaryMatrixSimd::<64>::zero(3, 2))
         );
+    }
+
+    #[test]
+    #[cfg(feature = "rand")]
+    fn test_as_simd() {
+        let mut rng = ChaCha8Rng::seed_from_u64(1234);
+        let mat = BinaryMatrix64::random(129, 129, &mut rng);
+        assert_eq!(format!("{:?}", mat), format!("{:?}", mat.as_simd::<2>()));
+        assert_eq!(format!("{:?}", mat), format!("{:?}", mat.as_simd::<2>().as_nonsimd()));
     }
 }

@@ -1,17 +1,20 @@
 use crate::base_matrix::{binary_matrix_fmt, slow_transpose, BinaryMatrix};
 use crate::binary_dense_vector::{BinaryDenseVector, BITS};
+use crate::BinaryMatrixSimd;
 #[cfg(feature = "rand")]
 use rand::Rng;
 use std::fmt;
 use std::fmt::{Debug, Formatter, Write};
 use std::ops;
+#[cfg(feature = "simd")]
+use std::simd::{LaneCount, SupportedLaneCount};
 
 /// A dense, binary matrix implementation by packing bits
 /// into u64 elements. Column-oriented.
 #[derive(Clone, PartialEq)]
 pub struct BinaryMatrix64 {
     nrows: usize,
-    columns: Vec<Vec<u64>>,
+    pub(crate) columns: Vec<Vec<u64>>,
 }
 
 impl BinaryMatrix64 {
@@ -38,6 +41,27 @@ impl BinaryMatrix64 {
         let mut mat = BinaryMatrix64::zero(rows, rows);
         for i in 0..rows {
             mat.set(i, i, 1);
+        }
+        mat
+    }
+
+    #[cfg(feature = "simd")]
+    pub fn as_simd<const LANES: usize>(&self) -> Box<BinaryMatrixSimd<LANES>>
+    where
+        LaneCount<LANES>: SupportedLaneCount,
+    {
+        let mut mat = BinaryMatrixSimd::zero(self.nrows, self.ncols());
+        for c in 0..self.ncols() {
+            let mut j = 0;
+            let mut l = 0;
+            for i in 0..self.columns[0].len() {
+                mat.columns[c][j][l] = self.columns[c][i];
+                l += 1;
+                if l == LANES {
+                    l = 0;
+                    j += 1;
+                }
+            }
         }
         mat
     }
@@ -300,7 +324,7 @@ mod tests {
         assert!((&left_kernel[0] * mat).is_zero());
     }
 
-     #[test]
+    #[test]
     #[cfg(feature = "rand")]
     fn test_transposes() {
         for i in 1..128 {
@@ -369,7 +393,10 @@ mod tests {
     fn test_large_transpose() {
         let mut rng = ChaCha8Rng::seed_from_u64(1234);
         let mat = BinaryMatrix64::random(1000, 600, &mut rng);
-        assert_eq!(format!("{:?}", mat), format!("{:?}", mat.transpose().transpose()));
+        assert_eq!(
+            format!("{:?}", mat),
+            format!("{:?}", mat.transpose().transpose())
+        );
     }
 }
 
