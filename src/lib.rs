@@ -1,4 +1,5 @@
 #![feature(portable_simd)]
+#![feature(test)]
 
 //! Implementations of binary (GF(2)) matrices.
 //!

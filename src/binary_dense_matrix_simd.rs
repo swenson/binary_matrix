@@ -111,7 +111,8 @@ where
         }
     }
 
-    // TODO: bit tilt algorithm?
+    // TODO: use those nice SIMD instructions somehow to do this faster
+    // TODO: or at least downcast to a BinaryMatrix64 and use the faster 64x64 transpose.
     fn transpose(&self) -> Box<dyn BinaryMatrix> {
         let mut new = BinaryMatrixSimd::new();
         slow_transpose(self, new.as_mut());
@@ -257,7 +258,7 @@ mod test {
         let mat = BinaryMatrixSimd::<64>::random(1024, 1024, &mut rng);
         let left_kernel = mat.left_kernel().unwrap();
         assert_eq!(1, left_kernel.len());
-        println!("{:?}", &left_kernel[0] * mat.as_ref());
+        assert!(!left_kernel[0].is_zero());
         assert!((&left_kernel[0] * mat).is_zero());
     }
 

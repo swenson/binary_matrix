@@ -3,7 +3,7 @@ use crate::binary_dense_vector::{BinaryDenseVector, BITS};
 #[cfg(feature = "rand")]
 use rand::Rng;
 use std::fmt;
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter, Write};
 use std::ops;
 
 /// A dense, binary matrix implementation by packing bits
@@ -55,6 +55,27 @@ impl BinaryMatrix64 {
         }
         mat
     }
+
+    /// extract 64x64 submatrix and transpose
+    fn subtranspose(&self, c: usize, r: usize) -> BinaryMatrix64x64 {
+        assert_eq!(r % 64, 0);
+        assert_eq!(c % 64, 0);
+
+        let mut cols = [0u64; 64];
+        for i in 0..64 {
+            cols[i] = self.columns[c + i][r >> 6];
+        }
+        let mut m = BinaryMatrix64x64 { cols };
+        m.transpose();
+        m
+    }
+
+    fn write_submatrix(&mut self, c: usize, r: usize, mat: &BinaryMatrix64x64) {
+        assert_eq!(r % 64, 0);
+        for i in 0..64 {
+            self.columns[c + i][r >> 6] = mat.cols[i];
+        }
+    }
 }
 
 impl BinaryMatrix for BinaryMatrix64 {
@@ -76,9 +97,37 @@ impl BinaryMatrix for BinaryMatrix64 {
         }
     }
 
-    // TODO: bit tilt algorithm?
     fn transpose(&self) -> Box<dyn BinaryMatrix> {
         let mut new = BinaryMatrix64::new();
+        if self.nrows >= 64 && self.columns.len() >= 64 {
+            new.expand(self.columns.len(), self.nrows);
+            let n = (self.nrows & 0xffffffffffffffc0).min(self.columns.len() & 0xffffffffffffffc0);
+            for i in (0..n).step_by(64) {
+                for j in (i..n).step_by(64) {
+                    if i == j {
+                        let a = self.subtranspose(i, i);
+                        new.write_submatrix(i, i, &a);
+                    } else {
+                        let a = self.subtranspose(i, j);
+                        let b = self.subtranspose(j, i);
+                        new.write_submatrix(i, j, &b);
+                        new.write_submatrix(j, i, &a);
+                    }
+                }
+            }
+            // slow way for the leftovers
+            for c in n..self.columns.len() {
+                for r in 0..self.nrows {
+                    new.set(c, r, self.get(r, c));
+                }
+            }
+            for r in n..self.nrows {
+                for c in 0..self.columns.len() {
+                    new.set(c, r, self.get(r, c));
+                }
+            }
+            return new as Box<dyn BinaryMatrix>;
+        }
         slow_transpose(self, new.as_mut());
         new as Box<dyn BinaryMatrix>
     }
@@ -86,13 +135,13 @@ impl BinaryMatrix for BinaryMatrix64 {
     fn get(&self, r: usize, c: usize) -> u8 {
         assert!(r < self.nrows);
         let x = self.columns[c][r >> 6];
-        let shift = r & 0x3f;
+        let shift = 0x3f - (r & 0x3f);
         ((x >> shift) & 1) as u8
     }
 
     fn set(&mut self, r: usize, c: usize, val: u8) {
         assert!(r < self.nrows);
-        let shift = r & 0x3f;
+        let shift = 0x3f - (r & 0x3f);
         if val == 1 {
             self.columns[c][r >> 6] |= 1 << shift;
         } else {
@@ -169,8 +218,56 @@ impl ops::Mul<&BinaryMatrix64> for &BinaryDenseVector {
     }
 }
 
+struct BinaryMatrix64x64 {
+    cols: [u64; 64],
+}
+
+impl Debug for BinaryMatrix64x64 {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_char('[')?;
+        for r in 0..64 {
+            if r != 0 {
+                f.write_str(", ")?;
+            }
+            f.write_char('[')?;
+            for c in 0..64 {
+                if c != 0 {
+                    f.write_str(", ")?;
+                }
+                f.write_char(char::from(48 + (1 & (self.cols[c] >> r)) as u8))?;
+            }
+            f.write_char(']')?;
+        }
+        f.write_char(']')
+    }
+}
+
+impl BinaryMatrix64x64 {
+    /// Based on Hacker's Delight (1st edition), Figure 7-3.
+    fn transpose(&mut self) {
+        let mut j = 32;
+        let mut m = 0xffffffffu64;
+        while j != 0 {
+            let mut k = 0;
+            while k < 64 {
+                unsafe {
+                    let a = *self.cols.get_unchecked(k);
+                    let b = *self.cols.get_unchecked(k + j);
+                    let t = (a ^ (b >> j)) & m;
+                    *self.cols.get_unchecked_mut(k) = a ^ t;
+                    *self.cols.get_unchecked_mut(k + j) = b ^ (t << j);
+                }
+
+                k = (k + j + 1) & !j;
+            }
+            j >>= 1;
+            m ^= m << j;
+        }
+    }
+}
+
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
     use crate::binary_dense_vector::BinaryDenseVector;
     #[cfg(feature = "rand")]
@@ -203,14 +300,25 @@ mod test {
         assert!((&left_kernel[0] * mat).is_zero());
     }
 
+     #[test]
+    #[cfg(feature = "rand")]
+    fn test_transposes() {
+        for i in 1..128 {
+            let mut rng = ChaCha8Rng::seed_from_u64(1234);
+            let mat = BinaryMatrix64::random(i, i, &mut rng);
+            let mut newmat = BinaryMatrix64::new();
+            slow_transpose(mat.as_ref(), &mut newmat);
+            assert_eq!(format!("{:?}", mat.transpose()), format!("{:?}", newmat));
+        }
+    }
+
     #[test]
     #[cfg(feature = "rand")]
     fn test_large_left_kernel() {
         let mut rng = ChaCha8Rng::seed_from_u64(1234);
-        let mat = BinaryMatrix64::random(1024, 1024, &mut rng);
+        let mat = BinaryMatrix64::random(66, 66, &mut rng);
         let left_kernel = mat.left_kernel().unwrap();
         assert_eq!(1, left_kernel.len());
-        println!("{:?}", &left_kernel[0] * mat.as_ref());
         assert!((&left_kernel[0] * mat).is_zero());
     }
 
@@ -233,5 +341,73 @@ mod test {
             format!("{:?}", mat.transpose()),
             format!("{:?}", BinaryMatrix64::zero(3, 2))
         );
+    }
+
+    #[test]
+    #[cfg(feature = "rand")]
+    fn test_transpose_64x64() {
+        let mut rng = ChaCha8Rng::seed_from_u64(1234);
+        let mat = BinaryMatrix64::random(64, 64, &mut rng);
+        let mut newmat = BinaryMatrix64::new();
+        slow_transpose(mat.as_ref(), &mut newmat);
+        assert_eq!(format!("{:?}", mat.transpose()), format!("{:?}", newmat));
+    }
+
+    #[test]
+    #[cfg(feature = "rand")]
+    fn test_transpose_128x64() {
+        let mut rng = ChaCha8Rng::seed_from_u64(1234);
+        let mat = BinaryMatrix64::random(128, 64, &mut rng);
+        assert_eq!(
+            format!("{:?}", mat),
+            format!("{:?}", mat.transpose().transpose())
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "rand")]
+    fn test_large_transpose() {
+        let mut rng = ChaCha8Rng::seed_from_u64(1234);
+        let mat = BinaryMatrix64::random(1000, 600, &mut rng);
+        assert_eq!(format!("{:?}", mat), format!("{:?}", mat.transpose().transpose()));
+    }
+}
+
+#[cfg(test)]
+mod bench {
+    extern crate test;
+    use crate::{BinaryMatrix, BinaryMatrix64};
+    use test::bench::Bencher;
+
+    #[bench]
+    fn bench_transpose_64x64(b: &mut Bencher) {
+        let mat = BinaryMatrix64::identity(64);
+        b.iter(|| {
+            test::black_box(mat.transpose());
+        });
+    }
+
+    #[bench]
+    fn bench_transpose_100x100(b: &mut Bencher) {
+        let mat = BinaryMatrix64::identity(100);
+        b.iter(|| {
+            test::black_box(mat.transpose());
+        });
+    }
+
+    #[bench]
+    fn bench_transpose_1000x1000(b: &mut Bencher) {
+        let mat = BinaryMatrix64::identity(1000);
+        b.iter(|| {
+            test::black_box(mat.transpose());
+        });
+    }
+
+    #[bench]
+    fn bench_transpose_10000x10000(b: &mut Bencher) {
+        let mat = BinaryMatrix64::identity(10000);
+        b.iter(|| {
+            test::black_box(mat.transpose());
+        });
     }
 }

@@ -84,7 +84,7 @@ pub trait BinaryMatrix {
 
             extend.swap_columns(nextc, pivot as usize);
 
-            for c in (nextc as usize + 1)..maxc {
+            for c in (nextc + 1)..maxc {
                 if extend.get(r, c) == 1 {
                     extend.xor_col(c, nextc);
                 }
@@ -110,7 +110,7 @@ pub trait BinaryMatrix {
         for c in 0..self.ncols() {
             let mut bit = 0;
             for r in 0..self.nrows() {
-                bit ^= self.get(r, c) * result_vector[r];
+                bit ^= self.get(r, c) & result_vector[r];
             }
             result.push(bit);
         }
@@ -173,14 +173,7 @@ impl ops::Mul<&dyn BinaryMatrix> for &BinaryDenseVector {
 
     fn mul(self, rhs: &dyn BinaryMatrix) -> Self::Output {
         assert_eq!(self.size, rhs.nrows());
-        if self.size == 0 {
-            return BinaryDenseVector::new();
-        }
-        let mut acc = BinaryDenseVector::zero(self.size);
-        for i in 0..self.size {
-            acc.set(i, self * &rhs.col(i));
-        }
-        acc
+        rhs.left_mul(self)
     }
 }
 
