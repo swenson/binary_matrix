@@ -45,6 +45,8 @@ impl BinaryMatrix64 {
         mat
     }
 
+    // TODO: investigate using rotate instructions instead of swap/shifts
+    // TODO: investigate SIMD instructions to speed this up
     pub(crate) fn transpose64(&self) -> Box<BinaryMatrix64> {
         let mut new = BinaryMatrix64::new();
         if self.nrows >= 64 && self.columns.len() >= 64 {
