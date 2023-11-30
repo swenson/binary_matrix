@@ -182,6 +182,22 @@ where
             }
         }
     }
+
+    /// Returns true if the given column is zero between 0 < maxr.
+    fn column_part_all_zero(&self, c: usize, maxr: usize) -> bool {
+        let zero_simd = self.zero_simd();
+        for x in 0..maxr/64/LANES {
+            if self.columns[c][x].ne(&zero_simd) {
+                return false;
+            }
+        }
+        for x in (maxr/64/LANES)*64*LANES..maxr {
+            if self.get(x, c) == 1 {
+                return false;
+            }
+        }
+        return true;
+    }
 }
 
 impl<const LANES: usize> ops::Index<(usize, usize)> for &BinaryMatrixSimd<LANES>
@@ -306,6 +322,35 @@ mod test {
         assert_eq!(&*mat as &dyn BinaryMatrix, &*matsimd);
         assert_eq!(mat, mat2);
     }
+
+    #[test]
+    fn test_column_part_zero() {
+        let mut mat = BinaryMatrixSimd::<2>::zero(200, 4);
+        mat.set(199, 0, 1);
+        mat.set(198, 1, 1);
+        mat.set(0, 2, 1);
+        mat.set(67, 3, 1);
+        for i in 0..199 {
+            assert!(mat.column_part_all_zero(0, i));
+        }
+        assert!(!mat.column_part_all_zero(0, 200));
+        for i in 0..198 {
+            assert!(mat.column_part_all_zero(1, i));
+        }
+        for i in 199..201 {
+            assert!(!mat.column_part_all_zero(1, i));
+        }
+        assert!(mat.column_part_all_zero(2, 0));
+        for i in 1..201 {
+            assert!(!mat.column_part_all_zero(2, i));
+        }
+        for i in 0..68 {
+            assert!(mat.column_part_all_zero(3, i));
+        }
+        for i in 69..201 {
+            assert!(!mat.column_part_all_zero(3, i));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -345,4 +390,13 @@ mod bench {
             test::black_box(mat.transpose());
         });
     }
+
+    #[bench]
+    fn bench_simd_column_part_zero(b: &mut Bencher) {
+        let mat = BinaryMatrixSimd::<64>::identity(10000);
+        b.iter(|| {
+            test::black_box(mat.column_part_all_zero(9999, 9999));
+        });
+    }
+
 }
