@@ -186,12 +186,12 @@ where
     /// Returns true if the given column is zero between 0 < maxr.
     fn column_part_all_zero(&self, c: usize, maxr: usize) -> bool {
         let zero_simd = self.zero_simd();
-        for x in 0..maxr/64/LANES {
+        for x in 0..maxr / 64 / LANES {
             if self.columns[c][x].ne(&zero_simd) {
                 return false;
             }
         }
-        for x in (maxr/64/LANES)*64*LANES..maxr {
+        for x in (maxr / 64 / LANES) * 64 * LANES..maxr {
             if self.get(x, c) == 1 {
                 return false;
             }
@@ -357,6 +357,10 @@ mod test {
 mod bench {
     extern crate test;
     use crate::{BinaryMatrix, BinaryMatrixSimd};
+    #[cfg(feature = "rand")]
+    use rand::SeedableRng;
+    #[cfg(feature = "rand")]
+    use rand_chacha::ChaCha8Rng;
     use test::bench::Bencher;
 
     #[bench]
@@ -399,4 +403,20 @@ mod bench {
         });
     }
 
+    macro_rules! bench_simd_left_kernel_1024_1024 { ( $( $x:expr ),* ) => {
+        $(
+            paste::item! {
+                #[bench]
+                #[cfg(feature = "rand")]
+                fn [< bench_simd_left_kernel_1024_1024_ $x >](b: &mut Bencher) {
+                    let mut rng = ChaCha8Rng::seed_from_u64(1234);
+                    let mat = BinaryMatrixSimd::<$x>::random(1024, 1024, &mut rng);
+                    b.iter(|| {
+                        test::black_box(mat.left_kernel().unwrap());
+                    });
+                }
+            }
+        )*
+    } }
+    bench_simd_left_kernel_1024_1024! { 1, 2, 4, 8, 16, 32, 64 }
 }

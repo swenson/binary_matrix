@@ -220,12 +220,12 @@ impl BinaryMatrix for BinaryMatrix64 {
 
     /// Returns true if the given column is zero between 0 < maxr.
     fn column_part_all_zero(&self, c: usize, maxr: usize) -> bool {
-        for x in 0..maxr/64 {
+        for x in 0..maxr / 64 {
             if self.columns[c][x] != 0 {
                 return false;
             }
         }
-        for x in (maxr/64)*64..maxr {
+        for x in (maxr / 64) * 64..maxr {
             if self.get(x, c) == 1 {
                 return false;
             }
@@ -448,6 +448,10 @@ mod tests {
 mod bench {
     extern crate test;
     use crate::{BinaryMatrix, BinaryMatrix64};
+    #[cfg(feature = "rand")]
+    use rand::SeedableRng;
+    #[cfg(feature = "rand")]
+    use rand_chacha::ChaCha8Rng;
     use test::bench::Bencher;
 
     #[bench]
@@ -487,6 +491,16 @@ mod bench {
         let mat = BinaryMatrix64::identity(10000);
         b.iter(|| {
             test::black_box(mat.column_part_all_zero(9999, 9999));
+        });
+    }
+
+    #[bench]
+    #[cfg(feature = "rand")]
+    fn bench_left_kernel_1024_1024(b: &mut Bencher) {
+        let mut rng = ChaCha8Rng::seed_from_u64(1234);
+        let mat = BinaryMatrix64::random(1024, 1024, &mut rng);
+        b.iter(|| {
+            test::black_box(mat.left_kernel().unwrap());
         });
     }
 }
