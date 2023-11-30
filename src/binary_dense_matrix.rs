@@ -1,5 +1,6 @@
 use crate::base_matrix::{binary_matrix_fmt, slow_transpose, BinaryMatrix};
 use crate::binary_dense_vector::{BinaryDenseVector, BITS};
+#[cfg(feature = "simd")]
 use crate::BinaryMatrixSimd;
 #[cfg(feature = "rand")]
 use rand::Rng;
