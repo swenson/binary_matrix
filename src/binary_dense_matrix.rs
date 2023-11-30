@@ -207,13 +207,10 @@ impl BinaryMatrix for BinaryMatrix64 {
         assert!(c2 < self.columns.len());
         let maxc = self.columns[c1].len();
         unsafe {
-            let mut x1 = self.columns[c1].as_mut_ptr();
-            let mut x2 = self.columns[c2].as_ptr();
-            for _ in 0..maxc {
-                //self.columns[c1][i] ^= self.columns[c2][i];
-                *x1 ^= *x2;
-                x1 = x1.offset(1);
-                x2 = x2.offset(1);
+            let x1 = self.columns[c1].as_mut_ptr();
+            let x2 = self.columns[c2].as_ptr();
+            for c in 0..maxc as isize {
+                *x1.offset(c) ^= *x2.offset(c);
             }
         }
     }
