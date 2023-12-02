@@ -1,5 +1,9 @@
 use crate::base_matrix::{binary_matrix_fmt, slow_transpose, BinaryMatrix};
 use crate::binary_dense_vector::{BinaryDenseVector, BITS};
+#[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
+use crate::transpose64x64_asm_aarch::transpose_asm_aarch64;
+#[cfg(not(all(target_arch = "aarch64", target_feature = "neon")))]
+use crate::transpose64x64_unroll::transpose_unroll_64x64;
 #[cfg(feature = "simd")]
 use crate::BinaryMatrixSimd;
 #[cfg(feature = "rand")]
@@ -119,7 +123,13 @@ impl BinaryMatrix64 {
     }
 
     /// extract 64x64 submatrix and transpose
-    fn subtranspose(&self, c: usize, r: usize) -> BinaryMatrix64x64 {
+    pub(crate) fn subtranspose(&self, c: usize, r: usize) -> BinaryMatrix64x64 {
+        let mut m = self.submatrix64(c, r);
+        m.transpose();
+        m
+    }
+
+    pub(crate) fn submatrix64(&self, c: usize, r: usize) -> BinaryMatrix64x64 {
         assert_eq!(r % 64, 0);
         assert_eq!(c % 64, 0);
 
@@ -127,9 +137,7 @@ impl BinaryMatrix64 {
         for i in 0..64 {
             cols[i] = self.columns[c + i][r >> 6];
         }
-        let mut m = BinaryMatrix64x64 { cols };
-        m.transpose();
-        m
+        BinaryMatrix64x64 { cols }
     }
 
     fn write_submatrix(&mut self, c: usize, r: usize, mat: &BinaryMatrix64x64) {
@@ -166,13 +174,13 @@ impl BinaryMatrix for BinaryMatrix64 {
     fn get(&self, r: usize, c: usize) -> u8 {
         assert!(r < self.nrows);
         let x = self.columns[c][r >> 6];
-        let shift = 0x3f - (r & 0x3f);
+        let shift = r & 0x3f;
         ((x >> shift) & 1) as u8
     }
 
     fn set(&mut self, r: usize, c: usize, val: u8) {
         assert!(r < self.nrows);
-        let shift = 0x3f - (r & 0x3f);
+        let shift = r & 0x3f;
         if val == 1 {
             self.columns[c][r >> 6] |= 1 << shift;
         } else {
@@ -261,8 +269,8 @@ impl ops::Mul<&BinaryMatrix64> for &BinaryDenseVector {
     }
 }
 
-struct BinaryMatrix64x64 {
-    cols: [u64; 64],
+pub(crate) struct BinaryMatrix64x64 {
+    pub(crate) cols: [u64; 64],
 }
 
 impl Debug for BinaryMatrix64x64 {
@@ -286,19 +294,30 @@ impl Debug for BinaryMatrix64x64 {
 }
 
 impl BinaryMatrix64x64 {
-    /// Based on Hacker's Delight (1st edition), Figure 7-3.
+    #[cfg(not(all(target_arch = "aarch64", target_feature = "neon")))]
     fn transpose(&mut self) {
+        transpose_unroll_64x64(&mut self.cols);
+    }
+
+    #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
+    fn transpose(&mut self) {
+        unsafe { transpose_asm_aarch64(self.cols.as_mut_ptr()) };
+    }
+
+    /// Based on Hacker's Delight (1st edition), Figure 7-3.
+    #[allow(dead_code)]
+    fn transpose_plain(&mut self) {
         let mut j = 32;
         let mut m = 0xffffffffu64;
         while j != 0 {
             let mut k = 0;
             while k < 64 {
                 unsafe {
-                    let a = *self.cols.get_unchecked(k);
-                    let b = *self.cols.get_unchecked(k + j);
+                    let a = *self.cols.get_unchecked(k + j);
+                    let b = *self.cols.get_unchecked(k);
                     let t = (a ^ (b >> j)) & m;
-                    *self.cols.get_unchecked_mut(k) = a ^ t;
-                    *self.cols.get_unchecked_mut(k + j) = b ^ (t << j);
+                    *self.cols.get_unchecked_mut(k + j) = a ^ t;
+                    *self.cols.get_unchecked_mut(k) = b ^ (t << j);
                 }
 
                 k = (k + j + 1) & !j;
@@ -318,6 +337,22 @@ mod tests {
     #[cfg(feature = "rand")]
     use rand_chacha::ChaCha8Rng;
 
+    #[test]
+    #[cfg(feature = "rand")]
+    fn test_submatrix() {
+        let mut rng = ChaCha8Rng::seed_from_u64(1234);
+        let mat = BinaryMatrix64::random(64, 64, &mut rng);
+        let mut a = [0u64; 64];
+        for c in 0..64 {
+            for r in 0..64 {
+                if mat.get(r, c) == 1 {
+                    a[c] |= 1 << r;
+                }
+            }
+        }
+        let b = mat.submatrix64(0, 0).cols;
+        assert_eq!(a, b);
+    }
     #[test]
     fn test_left_kernel() {
         let mut mat = BinaryMatrix64::new();
@@ -453,7 +488,7 @@ mod bench {
 
     #[bench]
     fn bench_transpose_64x64(b: &mut Bencher) {
-        let mat = BinaryMatrix64::identity(64);
+        let mut mat = BinaryMatrix64::identity(64).subtranspose(0, 0);
         b.iter(|| {
             test::black_box(mat.transpose());
         });

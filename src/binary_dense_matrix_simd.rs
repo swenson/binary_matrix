@@ -136,19 +136,19 @@ where
         assert!(r < self.nrows);
         let x = self.columns[c][r >> self.simd_bits()]
             [(r >> u64::BITS.trailing_zeros()) & self.simd_lane_mask()];
-        let shift = self.simd_base_mask() - (r & self.simd_base_mask());
+        let shift = r & self.simd_base_mask();
         ((x >> shift) & 1) as u8
     }
 
     fn set(&mut self, r: usize, c: usize, val: u8) {
         assert!(r < self.nrows);
-        let shift = self.simd_base_mask() - (r & self.simd_base_mask());
+        let shift = r & self.simd_base_mask();
         let row_idx = r >> self.simd_bits(); // >> 12
         let lane_idx = (r >> u64::BITS.trailing_zeros()) & self.simd_lane_mask();
         if val == 1 {
-            self.columns[c][row_idx].as_mut_array()[lane_idx] |= 1 << shift;
+            self.columns[c][row_idx][lane_idx] |= 1 << shift;
         } else {
-            self.columns[c][row_idx].as_mut_array()[lane_idx] &= !(1 << shift);
+            self.columns[c][row_idx][lane_idx] &= !(1 << shift);
         }
     }
 
@@ -238,6 +238,26 @@ where
         self * (rhs as &dyn BinaryMatrix)
     }
 }
+
+//     let mut j = 32;
+//     let mut m = 0xffffffffu64;
+//     while j != 0 {
+//         let mut k = 0;
+//         while k < 64 {
+//             unsafe {
+//                 let a = *self.cols.get_unchecked(k);
+//                 let b = *self.cols.get_unchecked(k + j);
+//                 let t = (a ^ (b >> j)) & m;
+//                 *self.cols.get_unchecked_mut(k) = a ^ t;
+//                 *self.cols.get_unchecked_mut(k + j) = b ^ (t << j);
+//             }
+//
+//             k = (k + j + 1) & !j;
+//         }
+//         j >>= 1;
+//         m ^= m << j;
+//     }
+// }
 
 #[cfg(test)]
 mod test {
