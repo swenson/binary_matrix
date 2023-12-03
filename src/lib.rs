@@ -13,6 +13,7 @@ mod binary_dense_matrix;
 #[cfg(feature = "simd")]
 mod binary_dense_matrix_simd;
 mod binary_dense_vector;
+mod transpose64x64_aarch64_intrinsics;
 mod transpose64x64_unroll;
 
 pub use crate::base_matrix::*;

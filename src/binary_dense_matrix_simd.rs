@@ -136,13 +136,13 @@ where
         assert!(r < self.nrows);
         let x = self.columns[c][r >> self.simd_bits()]
             [(r >> u64::BITS.trailing_zeros()) & self.simd_lane_mask()];
-        let shift = self.simd_base_mask() - (r & self.simd_base_mask());
+        let shift = r & self.simd_base_mask();
         ((x >> shift) & 1) as u8
     }
 
     fn set(&mut self, r: usize, c: usize, val: u8) {
         assert!(r < self.nrows);
-        let shift = self.simd_base_mask() - (r & self.simd_base_mask());
+        let shift = r & self.simd_base_mask();
         let row_idx = r >> self.simd_bits(); // >> 12
         let lane_idx = (r >> u64::BITS.trailing_zeros()) & self.simd_lane_mask();
         if val == 1 {

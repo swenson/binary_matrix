@@ -5,17 +5,13 @@ use crate::transpose64x64_unroll::transpose_unroll_64x64;
 use crate::BinaryMatrixSimd;
 #[cfg(feature = "rand")]
 use rand::Rng;
-use std::arch::{aarch64, asm};
 use std::fmt;
 use std::fmt::{Debug, Formatter, Write};
 #[cfg(feature = "simd")]
 use std::mem::transmute;
 use std::ops;
 #[cfg(feature = "simd")]
-use std::simd::{u16x16, u32x32, u64x64};
-use std::simd::{u8x8, Mask, Simd};
-#[cfg(feature = "simd")]
-use std::simd::{LaneCount, SupportedLaneCount};
+use std::simd::{u16x16, u32x32, u64x64, u8x8, LaneCount, Mask, Simd, SupportedLaneCount};
 
 /// A dense, binary matrix implementation by packing bits
 /// into u64 elements. Column-oriented.
@@ -126,7 +122,13 @@ impl BinaryMatrix64 {
     }
 
     /// extract 64x64 submatrix and transpose
-    fn subtranspose(&self, c: usize, r: usize) -> BinaryMatrix64x64 {
+    pub(crate) fn subtranspose(&self, c: usize, r: usize) -> BinaryMatrix64x64 {
+        let mut m = self.submatrix64(c, r);
+        m.transpose();
+        m
+    }
+
+    pub(crate) fn submatrix64(&self, c: usize, r: usize) -> BinaryMatrix64x64 {
         assert_eq!(r % 64, 0);
         assert_eq!(c % 64, 0);
 
@@ -134,9 +136,7 @@ impl BinaryMatrix64 {
         for i in 0..64 {
             cols[i] = self.columns[c + i][r >> 6];
         }
-        let mut m = BinaryMatrix64x64 { cols };
-        m.transpose();
-        m
+        BinaryMatrix64x64 { cols }
     }
 
     fn write_submatrix(&mut self, c: usize, r: usize, mat: &BinaryMatrix64x64) {
@@ -173,13 +173,13 @@ impl BinaryMatrix for BinaryMatrix64 {
     fn get(&self, r: usize, c: usize) -> u8 {
         assert!(r < self.nrows);
         let x = self.columns[c][r >> 6];
-        let shift = 0x3f - (r & 0x3f);
+        let shift = r & 0x3f;
         ((x >> shift) & 1) as u8
     }
 
     fn set(&mut self, r: usize, c: usize, val: u8) {
         assert!(r < self.nrows);
-        let shift = 0x3f - (r & 0x3f);
+        let shift = r & 0x3f;
         if val == 1 {
             self.columns[c][r >> 6] |= 1 << shift;
         } else {
@@ -268,8 +268,8 @@ impl ops::Mul<&BinaryMatrix64> for &BinaryDenseVector {
     }
 }
 
-struct BinaryMatrix64x64 {
-    cols: [u64; 64],
+pub(crate) struct BinaryMatrix64x64 {
+    pub(crate) cols: [u64; 64],
 }
 
 impl Debug for BinaryMatrix64x64 {
@@ -294,12 +294,19 @@ impl Debug for BinaryMatrix64x64 {
 
 impl BinaryMatrix64x64 {
     fn transpose(&mut self) {
-        self.transpose_unroll();
+        transpose_unroll_64x64(&mut self.cols);
         //self.transpose_plain();
     }
 
     /// Based on Hacker's Delight (1st edition), Figure 7-3.
+    #[allow(dead_code)]
     fn transpose_plain(&mut self) {
+        // TODO: remove these bit reversals
+        for k in 0..64 {
+            unsafe {
+                *self.cols.get_unchecked_mut(k) = self.cols.get_unchecked_mut(k).reverse_bits()
+            };
+        }
         let mut j = 32;
         let mut m = 0xffffffffu64;
         while j != 0 {
@@ -318,23 +325,12 @@ impl BinaryMatrix64x64 {
             j >>= 1;
             m ^= m << j;
         }
-    }
-
-    //#[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
-    //fn transpose_intrinsics(&mut self) {
-    fn transpose_unroll(&mut self) {
-        transpose_unroll_64x64(&mut self.cols);
-        // unsafe {
-        //     // let a0 = aarch64::vld4_u64(m);
-        //     // let a1 = aarch64::vld4_u64(m.offset(4));
-        //     // let a2 = aarch64::vld4_u64(m.offset(8));
-        //     // let a3 = aarch64::vld4_u64(m.offset(12));
-        //
-        //     // let j = 32;
-        //     // let m = 0xffffffffu64;
-        //     //
-        //
-        // }
+        // TODO: remove these bit reversals
+        for k in 0..64 {
+            unsafe {
+                *self.cols.get_unchecked_mut(k) = self.cols.get_unchecked_mut(k).reverse_bits()
+            };
+        }
     }
 
     // #[cfg(feature = "simd")]
@@ -344,6 +340,7 @@ impl BinaryMatrix64x64 {
 }
 
 #[cfg(feature = "simd")]
+#[allow(dead_code)]
 fn transpose_simd_64(x: u64x64) -> u64x64 {
     let mask32: Mask<isize, 32> = Mask::splat(true);
     let idx0_128: Simd<usize, 32> = Simd::<usize, 32>::from_array([
@@ -385,6 +382,7 @@ fn transpose_simd_64(x: u64x64) -> u64x64 {
 
 #[cfg(feature = "simd")]
 #[inline(always)]
+#[allow(dead_code)]
 fn transpose_simd_32(x: u32x32) -> u32x32 {
     let mask16: Mask<isize, 16> = Mask::splat(true);
     let idx0_64: Simd<usize, 16> =
@@ -420,6 +418,7 @@ fn transpose_simd_32(x: u32x32) -> u32x32 {
 
 #[cfg(feature = "simd")]
 #[inline(always)]
+#[allow(dead_code)]
 fn transpose_simd_16(x: u16x16) -> u16x16 {
     let mask8: Mask<isize, 8> = Mask::splat(true);
     let idx0_32: Simd<usize, 8> = Simd::<usize, 8>::from_array([0, 2, 4, 6, 8, 10, 12, 14]);
@@ -449,11 +448,15 @@ fn transpose_simd_16(x: u16x16) -> u16x16 {
 
 #[cfg(feature = "simd")]
 #[inline(always)]
+#[allow(dead_code)]
 fn transpose_simd_8(a: u64) -> u64 {
-    // Based on Hacker's Delight (1st edition), Figure 7-2.
+    // Based on Hacker's Delight (1st edition), Figure 7-2, which assumes
+    // bytes are stored 0..7 but bits are backwards (with bit 7 representing column 0).
+    // Our representation is 0..7 and 0..7.
     let mut x = (a >> 32) as u32;
     let mut y = (a & 0xffffffff) as u32;
     let mut t;
+
     t = (x ^ (x >> 7)) & 0x00AA00AA;
     x ^= t ^ (t << 7);
     t = (y ^ (y >> 7)) & 0x00AA00AA;
@@ -480,6 +483,22 @@ mod tests {
     #[cfg(feature = "rand")]
     use rand_chacha::ChaCha8Rng;
 
+    #[test]
+    #[cfg(feature = "rand")]
+    fn test_submatrix() {
+        let mut rng = ChaCha8Rng::seed_from_u64(1234);
+        let mat = BinaryMatrix64::random(64, 64, &mut rng);
+        let mut a = [0u64; 64];
+        for c in 0..64 {
+            for r in 0..64 {
+                if mat.get(r, c) == 1 {
+                    a[c] |= 1 << r;
+                }
+            }
+        }
+        let b = mat.submatrix64(0, 0).cols;
+        assert_eq!(a, b);
+    }
     #[test]
     fn test_left_kernel() {
         let mut mat = BinaryMatrix64::new();
@@ -567,17 +586,19 @@ mod tests {
         for c in 0..8 {
             for r in 0..8 {
                 if mat.get(r, c) == 1 {
-                    m |= 1 << ((7 - r) * 8 + 7 - c);
+                    m |= 1 << (c * 8 + r);
                 }
             }
         }
         m = transpose_simd_8(m);
-        let matt = mat.transpose();
+        let mut newmat = BinaryMatrix64::zero(64, 64);
+        slow_transpose(&*mat, &mut newmat);
+        //let matt = mat.transpose();
         let mut n = 0u64;
         for c in 0..8 {
             for r in 0..8 {
-                if matt.get(r, c) == 1 {
-                    n |= 1 << ((7 - r) * 8 + 7 - c);
+                if newmat.get(r, c) == 1 {
+                    n |= 1 << (c * 8 + r);
                 }
             }
         }
@@ -587,12 +608,37 @@ mod tests {
     #[test]
     #[cfg(feature = "simd")]
     fn test_transpose_8x8() {
+        let m = 0x0101010101010101u64;
+        assert_eq!(0xff, transpose_simd_8(m));
+        let m = 0x0102040810204080u64;
+        assert_eq!(m, transpose_simd_8(m));
         let m = 0x8040201008040201u64;
         assert_eq!(m, transpose_simd_8(m));
         let m = 0xffffffffffffffffu64;
         assert_eq!(m, transpose_simd_8(m));
-        let m = 0x0100000000000000u64;
-        assert_eq!(0x80, transpose_simd_8(m));
+
+        // 0x80 =
+        // 00000000
+        // 00000000
+        // 00000000
+        // 00000000
+        // 00000000
+        // 00000000
+        // 00000000
+        // 10000000
+        // =>
+        // 00000001
+        // 00000000
+        // 00000000
+        // 00000000
+        // 00000000
+        // 00000000
+        // 00000000
+        // 00000000
+        // = 0x100000000000000
+        let m = 0x80;
+        assert_eq!(0x100000000000000, transpose_simd_8(m));
+
         let m = 0x0200000000000000u64;
         assert_eq!(0x8000, transpose_simd_8(m));
         let m = 0x0400000000000000u64;
@@ -679,7 +725,6 @@ mod tests {
 #[cfg(test)]
 mod bench {
     extern crate test;
-    use crate::binary_dense_matrix::BinaryMatrix64x64;
     use crate::{BinaryMatrix, BinaryMatrix64};
     #[cfg(feature = "rand")]
     use rand::SeedableRng;
