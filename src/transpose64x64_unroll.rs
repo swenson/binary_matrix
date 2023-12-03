@@ -6,6 +6,7 @@ macro_rules! swap {
     };
 }
 
+#[allow(dead_code)]
 pub(crate) fn transpose_unroll_64x64(a: &mut [u64; 64]) {
     let mut a0 = a[0].reverse_bits();
     let mut a1 = a[1].reverse_bits();

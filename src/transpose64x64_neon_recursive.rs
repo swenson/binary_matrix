@@ -3,7 +3,7 @@ use std::arch::aarch64::{uint8x8_t, uint8x8x2_t};
 use std::intrinsics::transmute;
 
 #[allow(dead_code)]
-pub(crate) fn transpose64x64_aarch64_intrinsics(a: &mut [u64; 64]) {
+pub(crate) fn transpose64x64_neon_recursive(a: &mut [u64; 64]) {
     unsafe {
         let b = a.as_mut_ptr() as *mut u32;
         let mut ul = [0u32; 32];
@@ -65,10 +65,10 @@ pub(crate) fn transpose64x64_aarch64_intrinsics(a: &mut [u64; 64]) {
         aarch64::vst1q_u32(lrp.offset(24), c6.1);
         aarch64::vst1q_u32(lrp.offset(28), c7.1);
 
-        transpose64x64_aarch64_intrinsics_32x32(ulp);
-        transpose64x64_aarch64_intrinsics_32x32(urp);
-        transpose64x64_aarch64_intrinsics_32x32(llp);
-        transpose64x64_aarch64_intrinsics_32x32(lrp);
+        transpose32x32(ulp);
+        transpose32x32(urp);
+        transpose32x32(llp);
+        transpose32x32(lrp);
 
         // let the compiler figure out how to write this faster
         for i in 0..32 {
@@ -83,7 +83,8 @@ pub(crate) fn transpose64x64_aarch64_intrinsics(a: &mut [u64; 64]) {
 }
 
 #[allow(dead_code)]
-pub(crate) unsafe fn transpose64x64_aarch64_intrinsics_32x32(a: *mut u32) {
+#[inline(always)]
+pub(crate) unsafe fn transpose32x32(a: *mut u32) {
     let b = a as *mut u16;
     let mut ul = [0u16; 16];
     let ulp = (&mut ul).as_mut_ptr();
@@ -108,10 +109,10 @@ pub(crate) unsafe fn transpose64x64_aarch64_intrinsics_32x32(a: *mut u32) {
     aarch64::vst1q_u16(lrp, c0.1);
     aarch64::vst1q_u16(lrp.offset(8), c1.1);
 
-    transpose64x64_aarch64_intrinsics_16x16(ulp);
-    transpose64x64_aarch64_intrinsics_16x16(urp);
-    transpose64x64_aarch64_intrinsics_16x16(llp);
-    transpose64x64_aarch64_intrinsics_16x16(lrp);
+    transpose16x16(ulp);
+    transpose16x16(urp);
+    transpose16x16(llp);
+    transpose16x16(lrp);
 
     // let the compiler figure out how to write this faster
     for i in 0..16 {
@@ -125,20 +126,22 @@ pub(crate) unsafe fn transpose64x64_aarch64_intrinsics_32x32(a: *mut u32) {
 }
 
 #[allow(dead_code)]
-pub(crate) unsafe fn transpose64x64_aarch64_intrinsics_16x16(a: *mut u16) {
+#[inline(always)]
+pub(crate) unsafe fn transpose16x16(a: *mut u16) {
     let b = a as *mut u8;
     let c0 = aarch64::vld2_u8(b.offset(0));
     let c1 = aarch64::vld2_u8(b.offset(16));
-    let ul = transpose64x64_aarch64_intrinsics_8x8(c0.0);
-    let ur = transpose64x64_aarch64_intrinsics_8x8(c0.1);
-    let ll = transpose64x64_aarch64_intrinsics_8x8(c1.0);
-    let lr = transpose64x64_aarch64_intrinsics_8x8(c1.1);
+    let ul = transpose8x8(c0.0);
+    let ur = transpose8x8(c0.1);
+    let ll = transpose8x8(c1.0);
+    let lr = transpose8x8(c1.1);
     aarch64::vst2_u8(b, uint8x8x2_t(ul, ll));
     aarch64::vst2_u8(b.offset(16), uint8x8x2_t(ur, lr));
 }
 
 #[allow(dead_code)]
-pub(crate) unsafe fn transpose64x64_aarch64_intrinsics_8x8(x: uint8x8_t) -> uint8x8_t {
+#[inline(always)]
+pub(crate) unsafe fn transpose8x8(x: uint8x8_t) -> uint8x8_t {
     let a: u64 = transmute(x);
     // Based on Hacker's Delight (1st edition), Figure 7-2.
     let mut x = (a >> 32) as u32;
@@ -166,9 +169,8 @@ pub(crate) unsafe fn transpose64x64_aarch64_intrinsics_8x8(x: uint8x8_t) -> uint
 #[cfg(test)]
 mod tests {
     use crate::base_matrix::slow_transpose;
-    use crate::transpose64x64_aarch64_intrinsics::{
-        transpose64x64_aarch64_intrinsics, transpose64x64_aarch64_intrinsics_16x16,
-        transpose64x64_aarch64_intrinsics_32x32, transpose64x64_aarch64_intrinsics_8x8,
+    use crate::transpose64x64_neon_recursive::{
+        transpose16x16, transpose32x32, transpose64x64_neon_recursive, transpose8x8,
     };
     use crate::{BinaryMatrix, BinaryMatrix64};
     use rand::SeedableRng;
@@ -181,7 +183,7 @@ mod tests {
         let mat = BinaryMatrix64::random(64, 64, &mut rng);
         let mut newmat = BinaryMatrix64::new();
         let mut a = mat.submatrix64(0, 0).cols;
-        transpose64x64_aarch64_intrinsics(&mut a);
+        transpose64x64_neon_recursive(&mut a);
         slow_transpose(mat.as_ref(), &mut newmat);
         let b = newmat.submatrix64(0, 0).cols;
         assert_eq!(a, b);
@@ -210,7 +212,7 @@ mod tests {
             }
         }
         unsafe {
-            transpose64x64_aarch64_intrinsics_32x32(a.as_mut_ptr());
+            transpose32x32(a.as_mut_ptr());
         }
         slow_transpose(mat.as_ref(), &mut newmat);
         let mut b = [0u32; 32];
@@ -237,7 +239,7 @@ mod tests {
             }
         }
         unsafe {
-            transpose64x64_aarch64_intrinsics_16x16(a.as_mut_ptr());
+            transpose16x16(a.as_mut_ptr());
         }
         slow_transpose(mat.as_ref(), &mut newmat);
         let mut b = [0u16; 16];
@@ -265,7 +267,7 @@ mod tests {
             }
         }
         unsafe {
-            a = transmute(transpose64x64_aarch64_intrinsics_8x8(transmute(a)));
+            a = transmute(transpose8x8(transmute(a)));
         }
         slow_transpose(mat.as_ref(), &mut newmat);
         let mut b = [0u8; 8];
@@ -283,7 +285,7 @@ mod tests {
 #[cfg(test)]
 mod bench {
     extern crate test;
-    use crate::transpose64x64_aarch64_intrinsics::transpose64x64_aarch64_intrinsics;
+    use crate::transpose64x64_neon_recursive::transpose64x64_neon_recursive;
     use test::bench::Bencher;
 
     #[bench]
@@ -291,7 +293,7 @@ mod bench {
         let mut mat = [0u64; 64];
         mat[0] = 0xffffffffffffffff;
         b.iter(|| {
-            test::black_box(transpose64x64_aarch64_intrinsics(&mut mat));
+            test::black_box(transpose64x64_neon_recursive(&mut mat));
         });
     }
 }
