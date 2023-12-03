@@ -297,7 +297,6 @@ impl BinaryMatrix64x64 {
     #[cfg(not(all(target_arch = "aarch64", target_feature = "neon")))]
     fn transpose(&mut self) {
         transpose_unroll_64x64(&mut self.cols);
-        //self.transpose_plain();
     }
 
     #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
@@ -308,23 +307,17 @@ impl BinaryMatrix64x64 {
     /// Based on Hacker's Delight (1st edition), Figure 7-3.
     #[allow(dead_code)]
     fn transpose_plain(&mut self) {
-        // TODO: remove these bit reversals; they are practically free on aarch64+neon, but brutal on x86-64
-        // for k in 0..64 {
-        //     unsafe {
-        //         *self.cols.get_unchecked_mut(k) = self.cols.get_unchecked_mut(k).reverse_bits()
-        //     };
-        // }
         let mut j = 32;
         let mut m = 0xffffffffu64;
         while j != 0 {
             let mut k = 0;
             while k < 64 {
                 unsafe {
-                    let a = *self.cols.get_unchecked(k);
-                    let b = *self.cols.get_unchecked(k + j);
+                    let a = *self.cols.get_unchecked(k + j);
+                    let b = *self.cols.get_unchecked(k);
                     let t = (a ^ (b >> j)) & m;
-                    *self.cols.get_unchecked_mut(k) = a ^ t;
-                    *self.cols.get_unchecked_mut(k + j) = b ^ (t << j);
+                    *self.cols.get_unchecked_mut(k + j) = a ^ t;
+                    *self.cols.get_unchecked_mut(k) = b ^ (t << j);
                 }
 
                 k = (k + j + 1) & !j;
@@ -332,12 +325,6 @@ impl BinaryMatrix64x64 {
             j >>= 1;
             m ^= m << j;
         }
-        // TODO: remove these bit reversals; they are practically free on aarch64+neon, but brutal on x86-64
-        // for k in 0..64 {
-        //     unsafe {
-        //         *self.cols.get_unchecked_mut(k) = self.cols.get_unchecked_mut(k).reverse_bits()
-        //     };
-        // }
     }
 
     // #[cfg(feature = "simd")]
