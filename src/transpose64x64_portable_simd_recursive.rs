@@ -137,7 +137,9 @@ fn transpose8x8(a: u64) -> u64 {
 #[cfg(feature = "simd")]
 mod test {
     use crate::base_matrix::slow_transpose;
-    use crate::transpose64x64_portable_simd_recursive::{transpose64x64_portable_simd_recursive, transpose8x8};
+    use crate::transpose64x64_portable_simd_recursive::{
+        transpose64x64_portable_simd_recursive, transpose8x8,
+    };
     use crate::{BinaryMatrix, BinaryMatrix64};
     use rand::SeedableRng;
     use rand_chacha::ChaCha8Rng;

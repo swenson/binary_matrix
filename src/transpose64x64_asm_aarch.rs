@@ -307,7 +307,7 @@ mod tests {
     use rand_chacha::ChaCha8Rng;
 
     #[test]
-    fn test_transpose_64x64_unroll() {
+    fn test_transpose_64x64_aarch64_asm() {
         let mut rng = ChaCha8Rng::seed_from_u64(1234);
         let mat = BinaryMatrix64::random(64, 64, &mut rng);
         let mut newmat = BinaryMatrix64::new();

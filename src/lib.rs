@@ -16,6 +16,7 @@ mod binary_dense_vector;
 
 #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
 mod transpose64x64_asm_aarch;
+mod transpose64x64_asm_aarch2;
 #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
 mod transpose64x64_neon_recursive;
 #[cfg(feature = "simd")]
