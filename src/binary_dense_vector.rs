@@ -13,6 +13,12 @@ pub struct BinaryDenseVector {
     pub(crate) bits: Vec<u64>,
 }
 
+impl Default for BinaryDenseVector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BinaryDenseVector {
     pub fn new() -> BinaryDenseVector {
         BinaryDenseVector {
@@ -23,21 +29,19 @@ impl BinaryDenseVector {
 
     /// Returns a new vector of zeros of the given size.
     pub fn zero(n: usize) -> BinaryDenseVector {
-        let mut v = Vec::with_capacity(n / 64 + 1);
-        v.resize(n / 64 + 1, 0);
+        let v = vec![0; n / 64 + 1];
         BinaryDenseVector { size: n, bits: v }
     }
 
     /// Creates a new vector from the array of bits (one per u8).
     pub fn from_bits(bits: &[u8]) -> BinaryDenseVector {
-        let mut newvec = Vec::with_capacity(bits.len() / 64 + 1);
-        newvec.resize(bits.len() / 64 + 1, 0);
+        let newvec = vec![0; bits.len() / 64 + 1];
         let mut v = BinaryDenseVector {
             size: bits.len(),
             bits: newvec,
         };
-        for i in 0..bits.len() {
-            v.set(i, bits[i]);
+        for (i, b) in bits.iter().enumerate() {
+            v.set(i, *b);
         }
         v
     }

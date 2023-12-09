@@ -134,6 +134,7 @@ impl BinaryMatrix64 {
         assert_eq!(c % 64, 0);
 
         let mut cols = [0u64; 64];
+        #[allow(clippy::needless_range_loop)] // switching to .iter().enumerate() would borrow cols
         for i in 0..64 {
             cols[i] = self.columns[c + i][r >> 6];
         }
@@ -161,8 +162,7 @@ impl BinaryMatrix for BinaryMatrix64 {
             self.columns[c].resize((self.nrows >> 6) + 1, 0u64);
         }
         for _ in 0..new_cols {
-            let mut col = Vec::with_capacity((self.nrows >> 6) + 1);
-            col.resize((self.nrows >> 6) + 1, 0u64);
+            let col = vec![0; (self.nrows >> 6) + 1];
             self.columns.push(col);
         }
     }
@@ -206,11 +206,11 @@ impl BinaryMatrix for BinaryMatrix64 {
         }
     }
 
-    fn swap_columns(&mut self, c1: usize, c2: usize) -> () {
+    fn swap_columns(&mut self, c1: usize, c2: usize) {
         self.columns.swap(c1, c2);
     }
 
-    fn xor_col(&mut self, c1: usize, c2: usize) -> () {
+    fn xor_col(&mut self, c1: usize, c2: usize) {
         assert!(c1 < self.columns.len());
         assert!(c2 < self.columns.len());
         let maxc = self.columns[c1].len();
@@ -235,7 +235,7 @@ impl BinaryMatrix for BinaryMatrix64 {
                 return false;
             }
         }
-        return true;
+        true
     }
 }
 
@@ -490,7 +490,7 @@ mod bench {
     fn bench_transpose_64x64(b: &mut Bencher) {
         let mut mat = BinaryMatrix64::identity(64).subtranspose(0, 0);
         b.iter(|| {
-            test::black_box(mat.transpose());
+            mat.transpose();
         });
     }
 

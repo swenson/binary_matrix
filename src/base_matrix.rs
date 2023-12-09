@@ -114,7 +114,7 @@ pub trait BinaryMatrix {
             }
             result.push(bit);
         }
-        BinaryDenseVector::from_bits(&*result)
+        BinaryDenseVector::from_bits(&result)
     }
     /// Returns a copy of the column as a BinaryDenseVector.
     fn col(&self, c: usize) -> BinaryDenseVector {
@@ -140,7 +140,7 @@ pub trait BinaryMatrix {
                 return false;
             }
         }
-        return true;
+        true
     }
     /// Returns a vector of the given column from maxr < maxr+size.
     fn extract_column_part(&self, c: usize, maxr: usize, size: usize) -> BinaryDenseVector {
@@ -148,7 +148,7 @@ pub trait BinaryMatrix {
         for r in maxr..maxr + size {
             bits.push(self.get(r, c));
         }
-        BinaryDenseVector::from_bits(&*bits)
+        BinaryDenseVector::from_bits(&bits)
     }
 }
 
@@ -187,9 +187,7 @@ impl ops::Mul<Box<dyn BinaryMatrix>> for &BinaryDenseVector {
 
 impl PartialEq for &dyn BinaryMatrix {
     fn eq(&self, other: &Self) -> bool {
-        if self.nrows() != other.nrows() {
-            return false;
-        } else if self.ncols() != other.ncols() {
+        if self.nrows() != other.nrows() || self.ncols() != other.ncols() {
             return false;
         }
         for c in 0..self.ncols() {
@@ -200,22 +198,6 @@ impl PartialEq for &dyn BinaryMatrix {
             }
         }
         true
-    }
-
-    fn ne(&self, other: &Self) -> bool {
-        if self.nrows() == other.nrows() {
-            return true;
-        } else if self.ncols() == other.ncols() {
-            return true;
-        }
-        for c in 0..self.ncols() {
-            for r in 0..self.nrows() {
-                if self.get(r, c) == other.get(r, c) {
-                    return true;
-                }
-            }
-        }
-        false
     }
 }
 

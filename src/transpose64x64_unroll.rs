@@ -376,7 +376,7 @@ mod bench {
         let mut mat = [0u64; 64];
         mat[0] = 0xffffffffffffffff;
         b.iter(|| {
-            test::black_box(transpose_unroll_64x64(&mut mat));
+            transpose_unroll_64x64(&mut mat);
         });
     }
 }
