@@ -11,8 +11,6 @@ use rand::Rng;
 use std::fmt;
 use std::fmt::{Debug, Formatter, Write};
 use std::ops;
-#[cfg(feature = "simd")]
-use std::simd::{LaneCount, SupportedLaneCount};
 
 /// A dense, binary matrix implementation by packing bits
 /// into u64 elements. Column-oriented.
@@ -88,21 +86,11 @@ impl BinaryMatrix64 {
     }
 
     #[cfg(feature = "simd")]
-    pub fn as_simd<const LANES: usize>(&self) -> Box<BinaryMatrixSimd<LANES>>
-    where
-        LaneCount<LANES>: SupportedLaneCount,
-    {
+    pub fn as_simd<const LANES: usize>(&self) -> Box<BinaryMatrixSimd<LANES>> {
         let mut mat = BinaryMatrixSimd::zero(self.nrows, self.ncols());
         for c in 0..self.ncols() {
-            let mut j = 0;
-            let mut l = 0;
-            for i in 0..self.columns[0].len() {
-                mat.columns[c][j][l] = self.columns[c][i];
-                l += 1;
-                if l == LANES {
-                    l = 0;
-                    j += 1;
-                }
+            for (i, x) in self.columns[c].iter().enumerate() {
+                mat.columns[c][i / LANES][i % LANES] = *x;
             }
         }
         mat
@@ -189,10 +177,7 @@ impl BinaryMatrix for BinaryMatrix64 {
     }
 
     fn copy(&self) -> Box<dyn BinaryMatrix> {
-        let mut cols = vec![];
-        for c in 0..self.columns.len() {
-            cols.push(self.columns[c].clone());
-        }
+        let cols = self.columns.clone();
         Box::new(BinaryMatrix64 {
             nrows: self.nrows,
             columns: cols,
@@ -225,10 +210,8 @@ impl BinaryMatrix for BinaryMatrix64 {
 
     /// Returns true if the given column is zero between 0 < maxr.
     fn column_part_all_zero(&self, c: usize, maxr: usize) -> bool {
-        for x in 0..maxr / 64 {
-            if self.columns[c][x] != 0 {
-                return false;
-            }
+        if self.columns[c][..maxr / 64].iter().any(|x| *x != 0) {
+            return false;
         }
         for x in (maxr / 64) * 64..maxr {
             if self.get(x, c) == 1 {
@@ -281,11 +264,11 @@ impl Debug for BinaryMatrix64x64 {
                 f.write_str(", ")?;
             }
             f.write_char('[')?;
-            for c in 0..64 {
+            for (c, col) in self.cols.iter().enumerate() {
                 if c != 0 {
                     f.write_str(", ")?;
                 }
-                f.write_char(char::from(48 + (1 & (self.cols[c] >> r)) as u8))?;
+                f.write_char(char::from(48 + (1 & (col >> r)) as u8))?;
             }
             f.write_char(']')?;
         }
@@ -343,10 +326,10 @@ mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(1234);
         let mat = BinaryMatrix64::random(64, 64, &mut rng);
         let mut a = [0u64; 64];
-        for c in 0..64 {
+        for (c, x) in a.iter_mut().enumerate() {
             for r in 0..64 {
                 if mat.get(r, c) == 1 {
-                    a[c] |= 1 << r;
+                    *x |= 1 << r;
                 }
             }
         }
@@ -496,7 +479,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "bench"))]
 mod bench {
     extern crate test;
     use crate::binary_dense_vector::BinaryDenseVector;

@@ -1,5 +1,5 @@
-#![feature(portable_simd)]
-#![feature(test)]
+#![cfg_attr(feature = "simd", feature(portable_simd))]
+#![cfg_attr(all(test, feature = "bench"), feature(test))]
 
 //! Implementations of binary (GF(2)) matrices.
 //!

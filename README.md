@@ -1,8 +1,29 @@
 # binary_matrix
 
+[![CI](https://github.com/swenson/binary_matrix/actions/workflows/ci.yml/badge.svg)](https://github.com/swenson/binary_matrix/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/binary_matrix.svg)](https://crates.io/crates/binary_matrix)
+
 Rust implementation of dense binary matrices and vectors.
 
 Includes a SIMD implementation of a binary matrix.
+
+## Rust versions and features
+
+The crate builds on stable Rust 1.63 or newer with its default features.
+
+| Feature | Description | Toolchain |
+|---------|-------------|-----------|
+| `rand`  | Random matrices and vectors | stable |
+| `simd`  | `BinaryMatrixSimd`, built on `std::simd` | nightly |
+| `bench` | `#[bench]` benchmarks | nightly |
+
+Development uses the nightly pinned in `rust-toolchain.toml`:
+
+```sh
+cargo test --features rand,simd                # tests
+cargo bench --features bench,rand,simd         # benchmarks
+cargo +stable test --features rand             # stable subset
+```
 
 ## TODO
 

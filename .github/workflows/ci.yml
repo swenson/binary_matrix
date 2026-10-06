@@ -1,0 +1,153 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # Weekly, to catch breakage from new stable releases and the latest nightly
+  # even when nothing is pushed.
+  schedule:
+    - cron: "0 12 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+# Jobs without RUSTUP_TOOLCHAIN use the nightly pinned in rust-toolchain.toml,
+# which the `simd` and `bench` features require. Jobs that set RUSTUP_TOOLCHAIN
+# override the pin to check the stable subset of the crate (no `simd`/`bench`).
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: clippy (${{ matrix.os }}, ${{ matrix.features || 'no features' }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # x86-64 uses the unrolled transpose; aarch64 uses the NEON assembly.
+        os: [ubuntu-latest, macos-latest]
+        features: ["", "rand", "simd", "bench,rand,simd"]
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-targets --features "${{ matrix.features }}" -- -D warnings
+
+  test-nightly:
+    name: test nightly (${{ matrix.os }}, ${{ matrix.features }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # x86-64, aarch64 Linux, and aarch64 macOS cover both transpose implementations.
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+        # `bench` also runs each #[bench] once as a smoke test.
+        features: ["bench", "bench,rand", "bench,simd", "bench,rand,simd"]
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --features "${{ matrix.features }}"
+      - name: Test (release)
+        run: cargo test --release --features "${{ matrix.features }}"
+
+  test-stable:
+    name: test ${{ matrix.toolchain }} (${{ matrix.os }}, ${{ matrix.features || 'no features' }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+        # 1.63 is the MSRV: keep in sync with `rust-version` in Cargo.toml.
+        toolchain: [stable, "1.63"]
+        features: ["", "rand"]
+    env:
+      RUSTUP_TOOLCHAIN: ${{ matrix.toolchain }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install ${{ matrix.toolchain }} --profile minimal
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --features "${{ matrix.features }}"
+
+  test-latest-nightly:
+    name: test latest nightly (${{ matrix.os }})
+    # Early warning that the next bump of the pinned nightly will need work.
+    # Does not block merges; check this job's result on the weekly run.
+    continue-on-error: true
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      RUSTUP_TOOLCHAIN: nightly
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install nightly --profile minimal -c clippy
+      - run: cargo test --features bench,rand,simd
+      - run: cargo clippy --all-targets --features bench,rand,simd -- -D warnings
+
+  docs:
+    name: rustdoc
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc --no-deps --all-features
+
+  package:
+    name: package
+    runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: stable
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@v2
+      # Verifies that the crate packages and builds on stable as it would be published.
+      # (`cargo publish --dry-run` would fail whenever the current version is already on crates.io.)
+      - run: cargo package
+
+  bench:
+    name: bench (${{ matrix.os }})
+    # Full benchmark runs are slow and noisy on shared runners, so only run them
+    # on main and on demand. Pull requests smoke-test the benchmarks via `cargo test`.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo bench --features bench,rand,simd | tee bench-${{ matrix.os }}.txt
+      - name: Summarize
+        run: |
+          echo '### Benchmarks (${{ matrix.os }})' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep 'bench:' bench-${{ matrix.os }}.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bench-${{ matrix.os }}
+          path: bench-${{ matrix.os }}.txt

@@ -6,23 +6,17 @@ use rand::Rng;
 use std::fmt;
 use std::fmt::Debug;
 use std::ops;
-use std::simd::{LaneCount, Simd, SupportedLaneCount};
+use std::simd::Simd;
 
 /// A dense, binary matrix implementation by packing bits
 /// into simd arrays of u64 of size LANES. Column-oriented.
 #[derive(Clone)]
-pub struct BinaryMatrixSimd<const LANES: usize>
-where
-    LaneCount<LANES>: SupportedLaneCount,
-{
+pub struct BinaryMatrixSimd<const LANES: usize> {
     nrows: usize,
     pub(crate) columns: Vec<Vec<Simd<u64, LANES>>>,
 }
 
-impl<const LANES: usize> BinaryMatrixSimd<LANES>
-where
-    LaneCount<LANES>: SupportedLaneCount,
-{
+impl<const LANES: usize> BinaryMatrixSimd<LANES> {
     /// Returns a new, empty matrix with zero rows and columns.
     pub fn new() -> Box<BinaryMatrixSimd<LANES>> {
         Box::new(BinaryMatrixSimd {
@@ -103,10 +97,7 @@ where
     }
 }
 
-impl<const LANES: usize> BinaryMatrix for BinaryMatrixSimd<LANES>
-where
-    LaneCount<LANES>: SupportedLaneCount,
-{
+impl<const LANES: usize> BinaryMatrix for BinaryMatrixSimd<LANES> {
     fn nrows(&self) -> usize {
         self.nrows
     }
@@ -153,21 +144,18 @@ where
     }
 
     fn copy(&self) -> Box<dyn BinaryMatrix> {
-        let mut cols = vec![];
-        for c in 0..self.columns.len() {
-            cols.push(self.columns[c].clone());
-        }
+        let cols = self.columns.clone();
         Box::new(BinaryMatrixSimd {
             nrows: self.nrows,
             columns: cols,
         })
     }
 
-    fn swap_columns(&mut self, c1: usize, c2: usize) -> () {
+    fn swap_columns(&mut self, c1: usize, c2: usize) {
         self.columns.swap(c1, c2);
     }
 
-    fn xor_col(&mut self, c1: usize, c2: usize) -> () {
+    fn xor_col(&mut self, c1: usize, c2: usize) {
         assert!(c1 < self.columns.len());
         assert!(c2 < self.columns.len());
         let maxc = self.columns[c1].len();
@@ -183,24 +171,22 @@ where
     /// Returns true if the given column is zero between 0 < maxr.
     fn column_part_all_zero(&self, c: usize, maxr: usize) -> bool {
         let zero_simd = self.zero_simd();
-        for x in 0..maxr / 64 / LANES {
-            if self.columns[c][x].ne(&zero_simd) {
-                return false;
-            }
+        if self.columns[c][..maxr / 64 / LANES]
+            .iter()
+            .any(|x| *x != zero_simd)
+        {
+            return false;
         }
         for x in (maxr / 64 / LANES) * 64 * LANES..maxr {
             if self.get(x, c) == 1 {
                 return false;
             }
         }
-        return true;
+        true
     }
 }
 
-impl<const LANES: usize> ops::Index<(usize, usize)> for &BinaryMatrixSimd<LANES>
-where
-    LaneCount<LANES>: SupportedLaneCount,
-{
+impl<const LANES: usize> ops::Index<(usize, usize)> for &BinaryMatrixSimd<LANES> {
     type Output = u8;
 
     fn index(&self, index: (usize, usize)) -> &Self::Output {
@@ -208,19 +194,13 @@ where
     }
 }
 
-impl<const LANES: usize> Debug for BinaryMatrixSimd<LANES>
-where
-    LaneCount<LANES>: SupportedLaneCount,
-{
+impl<const LANES: usize> Debug for BinaryMatrixSimd<LANES> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         binary_matrix_fmt(self, f)
     }
 }
 
-impl<const LANES: usize> ops::Mul<Box<BinaryMatrixSimd<LANES>>> for &BinaryDenseVector
-where
-    LaneCount<LANES>: SupportedLaneCount,
-{
+impl<const LANES: usize> ops::Mul<Box<BinaryMatrixSimd<LANES>>> for &BinaryDenseVector {
     type Output = BinaryDenseVector;
 
     fn mul(self, rhs: Box<BinaryMatrixSimd<LANES>>) -> Self::Output {
@@ -228,10 +208,7 @@ where
     }
 }
 
-impl<const LANES: usize> ops::Mul<&BinaryMatrixSimd<LANES>> for &BinaryDenseVector
-where
-    LaneCount<LANES>: SupportedLaneCount,
-{
+impl<const LANES: usize> ops::Mul<&BinaryMatrixSimd<LANES>> for &BinaryDenseVector {
     type Output = BinaryDenseVector;
 
     fn mul(self, rhs: &BinaryMatrixSimd<LANES>) -> Self::Output {
@@ -335,8 +312,8 @@ mod test {
     fn test_as_simd() {
         let mut rng = ChaCha8Rng::seed_from_u64(1234);
         let mat = BinaryMatrix64::random(129, 129, &mut rng);
-        let matsimd = (&mat).as_simd::<2>();
-        let mat2 = (&matsimd).as_nonsimd();
+        let matsimd = mat.as_simd::<2>();
+        let mat2 = matsimd.as_nonsimd();
         assert_eq!(&*mat as &dyn BinaryMatrix, &*matsimd);
         assert_eq!(mat, mat2);
     }
@@ -389,7 +366,7 @@ mod test {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "bench"))]
 mod bench {
     extern crate test;
     use crate::binary_dense_vector::BinaryDenseVector;
@@ -397,7 +374,6 @@ mod bench {
     use rand::SeedableRng;
     #[cfg(feature = "rand")]
     use rand_chacha::ChaCha8Rng;
-    use std::simd::{LaneCount, SupportedLaneCount};
     use test::bench::Bencher;
 
     #[bench]
@@ -495,10 +471,7 @@ mod bench {
         b.iter(|| test::black_box(mat.as_nonsimd()));
     }
 
-    fn random_1024<const LANES: usize>() -> Box<BinaryMatrixSimd<LANES>>
-    where
-        LaneCount<LANES>: SupportedLaneCount,
-    {
+    fn random_1024<const LANES: usize>() -> Box<BinaryMatrixSimd<LANES>> {
         let mut rng = SeedableRng::seed_from_u64(1234);
         let mut mat = BinaryMatrixSimd::<LANES>::zero(1024, 1024);
         crate::matrix_tests::fill_random(mat.as_mut(), &mut rng);

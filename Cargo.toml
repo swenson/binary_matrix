@@ -8,16 +8,21 @@ repository = "https://github.com/swenson/binary_matrix"
 license = "MIT"
 keywords = ["math", "matrix", "binary"]
 categories = ["mathematics"]
+rust-version = "1.63"
+exclude = [".github"]
 
 [features]
 default = []
 rand = ["dep:rand"]
+# Requires nightly (std::simd).
 simd = []
+# Enables the #[bench] benchmarks. Requires nightly.
+bench = []
 
 [dependencies]
 rand = { version = "0.8.5", optional = true }
-paste = "1.0.14"
 
 [dev-dependencies]
+paste = "1.0.14"
 rand = "0.8.5"
 rand_chacha = "0.3.1"

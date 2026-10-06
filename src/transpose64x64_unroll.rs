@@ -365,7 +365,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "bench"))]
 mod bench {
     extern crate test;
     use crate::transpose64x64_unroll::transpose_unroll_64x64;

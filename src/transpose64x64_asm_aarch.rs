@@ -319,7 +319,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "bench"))]
 #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
 mod bench {
     extern crate test;
@@ -331,9 +331,8 @@ mod bench {
         let mut mat = [0u64; 64];
         mat[0] = 0xffffffffffffffff;
         b.iter(|| {
-            test::black_box(unsafe {
-                transpose_asm_aarch64(mat.as_mut_ptr());
-            });
+            unsafe { transpose_asm_aarch64(mat.as_mut_ptr()) };
+            test::black_box(&mat);
         });
     }
 }

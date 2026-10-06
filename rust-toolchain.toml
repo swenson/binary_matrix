@@ -1,0 +1,6 @@
+# The `simd` and `bench` features require nightly, so development is pinned to a
+# known-good nightly. The crate without those features builds on stable (see
+# `rust-version` in Cargo.toml). Bump this deliberately.
+[toolchain]
+channel = "nightly-2026-10-05"
+components = ["rustfmt", "clippy"]
