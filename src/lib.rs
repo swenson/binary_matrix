@@ -13,6 +13,8 @@ mod binary_dense_matrix;
 #[cfg(feature = "simd")]
 mod binary_dense_matrix_simd;
 mod binary_dense_vector;
+#[cfg(test)]
+mod matrix_tests;
 
 #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
 mod transpose64x64_asm_aarch;

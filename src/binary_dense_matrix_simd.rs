@@ -299,6 +299,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "rand")]
     fn test_large_left_kernel() {
         let mut rng = ChaCha8Rng::seed_from_u64(1234);
         let mat = BinaryMatrixSimd::<64>::random(1024, 1024, &mut rng);
@@ -341,6 +342,24 @@ mod test {
     }
 
     #[test]
+    fn test_as_simd_as_nonsimd_shapes() {
+        let mut rng = ChaCha8Rng::seed_from_u64(1234);
+        for (r, c) in crate::matrix_tests::SHAPES {
+            let mut mat = BinaryMatrix64::zero(r, c);
+            crate::matrix_tests::fill_random(mat.as_mut(), &mut rng);
+            let s1 = mat.as_simd::<1>();
+            let s4 = mat.as_simd::<4>();
+            let s64 = mat.as_simd::<64>();
+            assert_eq!(&*mat as &dyn BinaryMatrix, &*s1);
+            assert_eq!(&*mat as &dyn BinaryMatrix, &*s4);
+            assert_eq!(&*mat as &dyn BinaryMatrix, &*s64);
+            assert_eq!(mat, s1.as_nonsimd());
+            assert_eq!(mat, s4.as_nonsimd());
+            assert_eq!(mat, s64.as_nonsimd());
+        }
+    }
+
+    #[test]
     fn test_column_part_zero() {
         let mut mat = BinaryMatrixSimd::<2>::zero(200, 4);
         mat.set(199, 0, 1);
@@ -373,11 +392,12 @@ mod test {
 #[cfg(test)]
 mod bench {
     extern crate test;
+    use crate::binary_dense_vector::BinaryDenseVector;
     use crate::{BinaryMatrix, BinaryMatrixSimd};
-    #[cfg(feature = "rand")]
     use rand::SeedableRng;
     #[cfg(feature = "rand")]
     use rand_chacha::ChaCha8Rng;
+    use std::simd::{LaneCount, SupportedLaneCount};
     use test::bench::Bencher;
 
     #[bench]
@@ -419,6 +439,101 @@ mod bench {
             test::black_box(mat.column_part_all_zero(9999, 9999));
         });
     }
+
+    #[bench]
+    fn bench_simd_get_set_1024_1024(b: &mut Bencher) {
+        let mut mat = BinaryMatrixSimd::<64>::zero(1024, 1024);
+        b.iter(|| {
+            for c in 0..1024 {
+                for r in 0..1024 {
+                    mat.set(r, c, 1 ^ mat.get(r, c));
+                }
+            }
+            test::black_box(&mat);
+        });
+    }
+
+    #[bench]
+    fn bench_simd_swap_columns_10000(b: &mut Bencher) {
+        let mut mat = BinaryMatrixSimd::<64>::identity(10000);
+        b.iter(|| {
+            mat.swap_columns(0, 9999);
+            test::black_box(&mat);
+        });
+    }
+
+    #[bench]
+    fn bench_simd_col_10000(b: &mut Bencher) {
+        let mat = BinaryMatrixSimd::<64>::identity(10000);
+        b.iter(|| test::black_box(mat.col(5000)));
+    }
+
+    #[bench]
+    fn bench_simd_extract_column_part_10000(b: &mut Bencher) {
+        let mat = BinaryMatrixSimd::<64>::identity(10000);
+        b.iter(|| test::black_box(mat.extract_column_part(5000, 1000, 8000)));
+    }
+
+    #[bench]
+    fn bench_simd_copy_1000x1000(b: &mut Bencher) {
+        let mat = BinaryMatrixSimd::<64>::identity(1000);
+        b.iter(|| test::black_box(mat.copy()));
+    }
+
+    #[bench]
+    fn bench_simd_expand_1000x1000(b: &mut Bencher) {
+        b.iter(|| {
+            let mut mat = BinaryMatrixSimd::<64>::zero(1000, 1000);
+            mat.expand(1000, 1000);
+            test::black_box(mat)
+        });
+    }
+
+    #[bench]
+    fn bench_simd_as_nonsimd_1024_1024(b: &mut Bencher) {
+        let mat = random_1024::<64>();
+        b.iter(|| test::black_box(mat.as_nonsimd()));
+    }
+
+    fn random_1024<const LANES: usize>() -> Box<BinaryMatrixSimd<LANES>>
+    where
+        LaneCount<LANES>: SupportedLaneCount,
+    {
+        let mut rng = SeedableRng::seed_from_u64(1234);
+        let mut mat = BinaryMatrixSimd::<LANES>::zero(1024, 1024);
+        crate::matrix_tests::fill_random(mat.as_mut(), &mut rng);
+        mat
+    }
+
+    // Lane counts matter for the column-wise operations, so bench across all of them.
+    macro_rules! bench_simd_lanes { ( $( $x:expr ),* ) => {
+        $(
+            paste::item! {
+                #[bench]
+                fn [< bench_simd_xor_col_10000_ $x >](b: &mut Bencher) {
+                    let mut mat = BinaryMatrixSimd::<$x>::identity(10000);
+                    b.iter(|| {
+                        mat.xor_col(0, 9999);
+                        test::black_box(&mat);
+                    });
+                }
+
+                #[bench]
+                fn [< bench_simd_left_mul_1024_1024_ $x >](b: &mut Bencher) {
+                    let mat = random_1024::<$x>();
+                    let v = BinaryDenseVector::from_bits(&[1; 1024]);
+                    b.iter(|| test::black_box(&v * mat.as_ref()));
+                }
+
+                #[bench]
+                fn [< bench_simd_kernel_1024_1024_ $x >](b: &mut Bencher) {
+                    let mat = random_1024::<$x>();
+                    b.iter(|| test::black_box(mat.kernel().unwrap()));
+                }
+            }
+        )*
+    } }
+    bench_simd_lanes! { 1, 2, 4, 8, 16, 32, 64 }
 
     macro_rules! bench_simd_left_kernel_1024_1024 { ( $( $x:expr ),* ) => {
         $(

@@ -240,7 +240,7 @@ impl BinaryMatrix for BinaryMatrix64 {
 }
 
 impl Debug for BinaryMatrix64 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         binary_matrix_fmt(self, f)
     }
 }
@@ -447,6 +447,26 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::needless_range_loop)]
+    fn test_transpose_64x64_block() {
+        let mut rng = rand::SeedableRng::seed_from_u64(1234);
+        let mut mat = BinaryMatrix64::zero(64, 64);
+        let reference = crate::matrix_tests::fill_random(mat.as_mut(), &mut rng);
+        let expected = crate::matrix_tests::transpose(&reference, 64, 64);
+
+        let mut block = mat.submatrix64(0, 0);
+        block.transpose();
+        let mut plain = mat.submatrix64(0, 0);
+        plain.transpose_plain();
+        for c in 0..64 {
+            for r in 0..64 {
+                assert_eq!(expected[r][c], (block.cols[c] >> r) as u8 & 1);
+                assert_eq!(expected[r][c], (plain.cols[c] >> r) as u8 & 1);
+            }
+        }
+    }
+
+    #[test]
     fn test_column_part_zero() {
         let mut mat = BinaryMatrix64::zero(200, 4);
         mat.set(199, 0, 1);
@@ -479,6 +499,7 @@ mod tests {
 #[cfg(test)]
 mod bench {
     extern crate test;
+    use crate::binary_dense_vector::BinaryDenseVector;
     use crate::{BinaryMatrix, BinaryMatrix64};
     #[cfg(feature = "rand")]
     use rand::SeedableRng;
@@ -524,6 +545,91 @@ mod bench {
         b.iter(|| {
             test::black_box(mat.column_part_all_zero(9999, 9999));
         });
+    }
+
+    fn random_1024() -> Box<BinaryMatrix64> {
+        let mut rng = rand::SeedableRng::seed_from_u64(1234);
+        let mut mat = BinaryMatrix64::zero(1024, 1024);
+        crate::matrix_tests::fill_random(mat.as_mut(), &mut rng);
+        mat
+    }
+
+    #[bench]
+    fn bench_get_set_1024_1024(b: &mut Bencher) {
+        let mut mat = BinaryMatrix64::zero(1024, 1024);
+        b.iter(|| {
+            for c in 0..1024 {
+                for r in 0..1024 {
+                    mat.set(r, c, 1 ^ mat.get(r, c));
+                }
+            }
+            test::black_box(&mat);
+        });
+    }
+
+    #[bench]
+    fn bench_xor_col_10000(b: &mut Bencher) {
+        let mut mat = BinaryMatrix64::identity(10000);
+        b.iter(|| {
+            mat.xor_col(0, 9999);
+            test::black_box(&mat);
+        });
+    }
+
+    #[bench]
+    fn bench_swap_columns_10000(b: &mut Bencher) {
+        let mut mat = BinaryMatrix64::identity(10000);
+        b.iter(|| {
+            mat.swap_columns(0, 9999);
+            test::black_box(&mat);
+        });
+    }
+
+    #[bench]
+    fn bench_col_10000(b: &mut Bencher) {
+        let mat = BinaryMatrix64::identity(10000);
+        b.iter(|| test::black_box(mat.col(5000)));
+    }
+
+    #[bench]
+    fn bench_extract_column_part_10000(b: &mut Bencher) {
+        let mat = BinaryMatrix64::identity(10000);
+        b.iter(|| test::black_box(mat.extract_column_part(5000, 1000, 8000)));
+    }
+
+    #[bench]
+    fn bench_copy_1000x1000(b: &mut Bencher) {
+        let mat = BinaryMatrix64::identity(1000);
+        b.iter(|| test::black_box(mat.copy()));
+    }
+
+    #[bench]
+    fn bench_expand_1000x1000(b: &mut Bencher) {
+        b.iter(|| {
+            let mut mat = BinaryMatrix64::zero(1000, 1000);
+            mat.expand(1000, 1000);
+            test::black_box(mat)
+        });
+    }
+
+    #[bench]
+    fn bench_left_mul_1024_1024(b: &mut Bencher) {
+        let mat = random_1024();
+        let v = BinaryDenseVector::from_bits(&[1; 1024]);
+        b.iter(|| test::black_box(&v * mat.as_ref()));
+    }
+
+    #[bench]
+    fn bench_kernel_1024_1024(b: &mut Bencher) {
+        let mat = random_1024();
+        b.iter(|| test::black_box(mat.kernel().unwrap()));
+    }
+
+    #[bench]
+    #[cfg(feature = "simd")]
+    fn bench_as_simd_1024_1024(b: &mut Bencher) {
+        let mat = random_1024();
+        b.iter(|| test::black_box(mat.as_simd::<64>()));
     }
 
     #[bench]
