@@ -1,6 +1,6 @@
 [package]
 name = "binary_matrix"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 authors = ["Christopher Swenson <swenson@swenson.io>"]
 description = "Dense binary matrix operations."
