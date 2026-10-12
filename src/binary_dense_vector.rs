@@ -20,6 +20,7 @@ impl Default for BinaryDenseVector {
 }
 
 impl BinaryDenseVector {
+    /// Returns a new, empty vector of size zero.
     pub fn new() -> BinaryDenseVector {
         BinaryDenseVector {
             size: 0,

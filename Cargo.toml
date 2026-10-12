@@ -11,6 +11,10 @@ categories = ["mathematics"]
 rust-version = "1.63"
 exclude = [".github"]
 
+[package.metadata.docs.rs]
+features = ["rand", "simd"]
+rustdoc-args = ["--cfg", "docsrs"]
+
 [features]
 default = []
 rand = ["dep:rand"]

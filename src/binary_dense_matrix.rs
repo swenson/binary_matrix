@@ -85,6 +85,7 @@ impl BinaryMatrix64 {
         new
     }
 
+    /// Returns a copy of this matrix as a [`BinaryMatrixSimd`] with `LANES` u64s per SIMD vector.
     #[cfg(feature = "simd")]
     pub fn as_simd<const LANES: usize>(&self) -> Box<BinaryMatrixSimd<LANES>> {
         let mut mat = BinaryMatrixSimd::zero(self.nrows, self.ncols());

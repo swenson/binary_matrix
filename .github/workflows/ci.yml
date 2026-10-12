@@ -101,17 +101,28 @@ jobs:
       - run: rustup toolchain install nightly --profile minimal -c clippy
       - run: cargo test --features bench,rand,simd
       - run: cargo clippy --all-targets --features bench,rand,simd -- -D warnings
+      - name: Docs (docs.rs configuration)
+        # docs.rs builds with the latest nightly.
+        run: cargo doc --no-deps --features rand,simd
+        env:
+          RUSTDOCFLAGS: --cfg docsrs -D warnings
 
   docs:
     name: rustdoc
     runs-on: ubuntu-latest
-    env:
-      RUSTDOCFLAGS: -D warnings
     steps:
       - uses: actions/checkout@v7
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
-      - run: cargo doc --no-deps --all-features
+      - name: Docs (docs.rs configuration)
+        # Keep in sync with [package.metadata.docs.rs] in Cargo.toml.
+        run: cargo doc --no-deps --features rand,simd
+        env:
+          RUSTDOCFLAGS: --cfg docsrs -D warnings
+      - name: Docs (default features)
+        run: cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
 
   package:
     name: package

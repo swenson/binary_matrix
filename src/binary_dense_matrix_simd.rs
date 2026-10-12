@@ -44,6 +44,7 @@ impl<const LANES: usize> BinaryMatrixSimd<LANES> {
         mat
     }
 
+    /// Returns a copy of this matrix as a [`BinaryMatrix64`].
     pub fn as_nonsimd(&self) -> Box<BinaryMatrix64> {
         let mut mat = BinaryMatrix64::zero(self.nrows, self.ncols());
         for c in 0..self.ncols() {
