@@ -6,6 +6,7 @@ use rand::Rng;
 use std::fmt;
 use std::fmt::Debug;
 use std::ops;
+use std::simd::num::SimdUint;
 use std::simd::Simd;
 
 /// A dense, binary matrix implementation by packing bits
@@ -76,6 +77,18 @@ impl<const LANES: usize> BinaryMatrixSimd<LANES> {
             }
         }
         mat
+    }
+
+    /// Number of SIMD vectors in each column.
+    fn column_len(&self) -> usize {
+        (self.nrows >> self.simd_bits()) + 1
+    }
+
+    /// Packs the vector's words into SIMD vectors laid out like a column.
+    fn vector_to_simd(&self, vector: &BinaryDenseVector) -> Vec<Simd<u64, LANES>> {
+        let mut words = vector.bits.clone();
+        words.resize(self.column_len() * LANES, 0);
+        words.chunks_exact(LANES).map(Simd::from_slice).collect()
     }
 
     #[inline(always)]
@@ -169,6 +182,43 @@ impl<const LANES: usize> BinaryMatrix for BinaryMatrixSimd<LANES> {
         }
     }
 
+    fn left_mul(&self, vector: &BinaryDenseVector) -> BinaryDenseVector {
+        assert_eq!(vector.size, self.nrows);
+        let v = self.vector_to_simd(vector);
+        let mut result = BinaryDenseVector::zero(self.columns.len());
+        for (c, col) in self.columns.iter().enumerate() {
+            let and = col
+                .iter()
+                .zip(&v)
+                .fold(self.zero_simd(), |acc, (x, y)| acc ^ (x & y));
+            result.bits[c >> 6] |= ((and.reduce_xor().count_ones() & 1) as u64) << (c & 0x3f);
+        }
+        result
+    }
+
+    fn right_mul(&self, vector: &BinaryDenseVector) -> BinaryDenseVector {
+        assert_eq!(vector.size, self.columns.len());
+        let mut acc = vec![self.zero_simd(); self.column_len()];
+        for (i, word) in vector.bits.iter().enumerate() {
+            let mut word = *word;
+            while word != 0 {
+                let c = (i << 6) | word.trailing_zeros() as usize;
+                if c >= self.columns.len() {
+                    break;
+                }
+                for (x, y) in acc.iter_mut().zip(&self.columns[c]) {
+                    *x ^= y;
+                }
+                word &= word - 1;
+            }
+        }
+        let mut result = BinaryDenseVector::zero(self.nrows);
+        for (k, x) in result.bits.iter_mut().enumerate() {
+            *x = acc[k / LANES][k % LANES];
+        }
+        result
+    }
+
     /// Returns true if the given column is zero between 0 < maxr.
     fn column_part_all_zero(&self, c: usize, maxr: usize) -> bool {
         let zero_simd = self.zero_simd();
@@ -214,6 +264,22 @@ impl<const LANES: usize> ops::Mul<&BinaryMatrixSimd<LANES>> for &BinaryDenseVect
 
     fn mul(self, rhs: &BinaryMatrixSimd<LANES>) -> Self::Output {
         self * (rhs as &dyn BinaryMatrix)
+    }
+}
+
+impl<const LANES: usize> ops::Mul<&BinaryDenseVector> for Box<BinaryMatrixSimd<LANES>> {
+    type Output = BinaryDenseVector;
+
+    fn mul(self, rhs: &BinaryDenseVector) -> Self::Output {
+        self.right_mul(rhs)
+    }
+}
+
+impl<const LANES: usize> ops::Mul<&BinaryDenseVector> for &BinaryMatrixSimd<LANES> {
+    type Output = BinaryDenseVector;
+
+    fn mul(self, rhs: &BinaryDenseVector) -> Self::Output {
+        self.right_mul(rhs)
     }
 }
 
@@ -497,6 +563,13 @@ mod bench {
                     let mat = random_1024::<$x>();
                     let v = BinaryDenseVector::from_bits(&[1; 1024]);
                     b.iter(|| test::black_box(&v * mat.as_ref()));
+                }
+
+                #[bench]
+                fn [< bench_simd_right_mul_1024_1024_ $x >](b: &mut Bencher) {
+                    let mat = random_1024::<$x>();
+                    let v = BinaryDenseVector::from_bits(&[1; 1024]);
+                    b.iter(|| test::black_box(mat.as_ref() * &v));
                 }
 
                 #[bench]

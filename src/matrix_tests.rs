@@ -2,10 +2,12 @@
 //!
 //! Each operation is checked against a naive reference model (a `Vec` of rows of `u8`s).
 
-use crate::base_matrix::BinaryMatrix;
-use crate::binary_dense_vector::BinaryDenseVector;
+use crate::base_matrix::{binary_matrix_fmt, slow_transpose, BinaryMatrix};
+use crate::binary_dense_vector::{BinaryDenseVector, BITS};
+use crate::BinaryMatrix64;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
+use std::{fmt, ops};
 
 /// Shapes chosen to straddle u64 word boundaries and the 64x64 transpose block size.
 pub(crate) const SHAPES: [(usize, usize); 14] = [
@@ -393,11 +395,42 @@ macro_rules! matrix_conformance_tests {
             }
 
             #[test]
+            fn test_right_mul() {
+                let mut rng = ChaCha8Rng::seed_from_u64(1234);
+                for (r, c) in SHAPES {
+                    let (m, reference) = random(r, c, &mut rng);
+                    for _ in 0..5 {
+                        let bits: Vec<u8> = (0..c).map(|_| rng.gen_range(0..2)).collect();
+                        let v = BinaryDenseVector::from_bits(&bits);
+                        let expected: Vec<u8> = (0..r)
+                            .map(|i| (0..c).fold(0, |a, j| a ^ (reference[i][j] & bits[j])))
+                            .collect();
+                        let expected = BinaryDenseVector::from_bits(&expected);
+                        assert_eq!(expected, m.right_mul(&v));
+                        assert_eq!(expected, m.as_ref() * &v);
+                        assert_eq!(expected, (m.as_ref() as &dyn BinaryMatrix) * &v);
+                        assert_eq!(expected, m.copy() * &v);
+                        assert_eq!(expected, m.clone() * &v);
+                    }
+                }
+            }
+
+            #[test]
+            #[should_panic]
+            fn test_right_mul_size_mismatch() {
+                <$t>::zero(3, 3).right_mul(&BinaryDenseVector::zero(4));
+            }
+
+            #[test]
             fn test_kernel() {
                 let mut rng = ChaCha8Rng::seed_from_u64(1234);
                 for (r, c) in SHAPES {
                     let (m, reference) = random(r, c, &mut rng);
-                    assert_kernel(&reference, c, &m.kernel().unwrap());
+                    let basis = m.kernel().unwrap();
+                    assert_kernel(&reference, c, &basis);
+                    for v in basis.iter() {
+                        assert!(m.right_mul(v).is_zero());
+                    }
                 }
             }
 
@@ -467,6 +500,104 @@ macro_rules! matrix_conformance_tests {
     };
 }
 
+/// Implements only the required `BinaryMatrix` methods, so the suite covers the trait's
+/// default methods.
+#[derive(Clone)]
+pub(crate) struct DefaultMethods(BinaryMatrix64);
+
+impl DefaultMethods {
+    pub(crate) fn new() -> Box<DefaultMethods> {
+        Box::new(DefaultMethods(*BinaryMatrix64::new()))
+    }
+
+    pub(crate) fn zero(rows: usize, cols: usize) -> Box<DefaultMethods> {
+        Box::new(DefaultMethods(*BinaryMatrix64::zero(rows, cols)))
+    }
+
+    pub(crate) fn identity(rows: usize) -> Box<DefaultMethods> {
+        Box::new(DefaultMethods(*BinaryMatrix64::identity(rows)))
+    }
+}
+
+impl BinaryMatrix for DefaultMethods {
+    fn nrows(&self) -> usize {
+        self.0.nrows()
+    }
+    fn ncols(&self) -> usize {
+        self.0.ncols()
+    }
+    fn expand(&mut self, new_rows: usize, new_cols: usize) {
+        self.0.expand(new_rows, new_cols)
+    }
+    fn transpose(&self) -> Box<dyn BinaryMatrix> {
+        let mut new = DefaultMethods::new();
+        slow_transpose(self, new.as_mut());
+        new
+    }
+    fn get(&self, r: usize, c: usize) -> u8 {
+        self.0.get(r, c)
+    }
+    fn set(&mut self, r: usize, c: usize, val: u8) {
+        self.0.set(r, c, val)
+    }
+    fn copy(&self) -> Box<dyn BinaryMatrix> {
+        Box::new(self.clone())
+    }
+    fn swap_columns(&mut self, c1: usize, c2: usize) {
+        self.0.swap_columns(c1, c2)
+    }
+    fn xor_col(&mut self, c1: usize, c2: usize) {
+        self.0.xor_col(c1, c2)
+    }
+}
+
+impl fmt::Debug for DefaultMethods {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        binary_matrix_fmt(self, f)
+    }
+}
+
+impl ops::Index<(usize, usize)> for &DefaultMethods {
+    type Output = u8;
+
+    fn index(&self, index: (usize, usize)) -> &Self::Output {
+        &BITS[self.get(index.0, index.1) as usize]
+    }
+}
+
+impl ops::Mul<&DefaultMethods> for &BinaryDenseVector {
+    type Output = BinaryDenseVector;
+
+    fn mul(self, rhs: &DefaultMethods) -> Self::Output {
+        self * (rhs as &dyn BinaryMatrix)
+    }
+}
+
+impl ops::Mul<Box<DefaultMethods>> for &BinaryDenseVector {
+    type Output = BinaryDenseVector;
+
+    fn mul(self, rhs: Box<DefaultMethods>) -> Self::Output {
+        self * rhs.as_ref()
+    }
+}
+
+impl ops::Mul<&BinaryDenseVector> for &DefaultMethods {
+    type Output = BinaryDenseVector;
+
+    fn mul(self, rhs: &BinaryDenseVector) -> Self::Output {
+        self.right_mul(rhs)
+    }
+}
+
+impl ops::Mul<&BinaryDenseVector> for Box<DefaultMethods> {
+    type Output = BinaryDenseVector;
+
+    fn mul(self, rhs: &BinaryDenseVector) -> Self::Output {
+        self.right_mul(rhs)
+    }
+}
+
+matrix_conformance_tests!(default_methods, crate::matrix_tests::DefaultMethods);
 matrix_conformance_tests!(binary_matrix_64, crate::BinaryMatrix64);
 #[cfg(feature = "simd")]
 matrix_conformance_tests!(binary_matrix_simd_1, crate::BinaryMatrixSimd<1>);

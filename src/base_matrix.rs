@@ -116,6 +116,19 @@ pub trait BinaryMatrix {
         }
         BinaryDenseVector::from_bits(&result)
     }
+    /// Multiplies the given matrix on the right by the dense vector.
+    fn right_mul(&self, vector: &BinaryDenseVector) -> BinaryDenseVector {
+        assert_eq!(vector.size, self.ncols());
+        let mut result = Vec::with_capacity(self.nrows());
+        for r in 0..self.nrows() {
+            let mut bit = 0;
+            for c in 0..self.ncols() {
+                bit ^= self.get(r, c) & vector[c];
+            }
+            result.push(bit);
+        }
+        BinaryDenseVector::from_bits(&result)
+    }
     /// Returns a copy of the column as a BinaryDenseVector.
     fn col(&self, c: usize) -> BinaryDenseVector {
         assert!(c < self.ncols());
@@ -182,6 +195,22 @@ impl ops::Mul<Box<dyn BinaryMatrix>> for &BinaryDenseVector {
 
     fn mul(self, rhs: Box<dyn BinaryMatrix>) -> Self::Output {
         self * rhs.as_ref()
+    }
+}
+
+impl ops::Mul<&BinaryDenseVector> for &dyn BinaryMatrix {
+    type Output = BinaryDenseVector;
+
+    fn mul(self, rhs: &BinaryDenseVector) -> Self::Output {
+        self.right_mul(rhs)
+    }
+}
+
+impl ops::Mul<&BinaryDenseVector> for Box<dyn BinaryMatrix> {
+    type Output = BinaryDenseVector;
+
+    fn mul(self, rhs: &BinaryDenseVector) -> Self::Output {
+        self.right_mul(rhs)
     }
 }
 

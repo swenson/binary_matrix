@@ -209,6 +209,38 @@ impl BinaryMatrix for BinaryMatrix64 {
         }
     }
 
+    fn left_mul(&self, vector: &BinaryDenseVector) -> BinaryDenseVector {
+        assert_eq!(vector.size, self.nrows);
+        let mut result = BinaryDenseVector::zero(self.columns.len());
+        for (c, col) in self.columns.iter().enumerate() {
+            let and = col
+                .iter()
+                .zip(&vector.bits)
+                .fold(0, |acc, (x, y)| acc ^ (x & y));
+            result.bits[c >> 6] |= ((and.count_ones() & 1) as u64) << (c & 0x3f);
+        }
+        result
+    }
+
+    fn right_mul(&self, vector: &BinaryDenseVector) -> BinaryDenseVector {
+        assert_eq!(vector.size, self.columns.len());
+        let mut result = BinaryDenseVector::zero(self.nrows);
+        for (i, word) in vector.bits.iter().enumerate() {
+            let mut word = *word;
+            while word != 0 {
+                let c = (i << 6) | word.trailing_zeros() as usize;
+                if c >= self.columns.len() {
+                    break;
+                }
+                for (x, y) in result.bits.iter_mut().zip(&self.columns[c]) {
+                    *x ^= y;
+                }
+                word &= word - 1;
+            }
+        }
+        result
+    }
+
     /// Returns true if the given column is zero between 0 < maxr.
     fn column_part_all_zero(&self, c: usize, maxr: usize) -> bool {
         if self.columns[c][..maxr / 64].iter().any(|x| *x != 0) {
@@ -250,6 +282,22 @@ impl ops::Mul<&BinaryMatrix64> for &BinaryDenseVector {
 
     fn mul(self, rhs: &BinaryMatrix64) -> Self::Output {
         self * (rhs as &dyn BinaryMatrix)
+    }
+}
+
+impl ops::Mul<&BinaryDenseVector> for Box<BinaryMatrix64> {
+    type Output = BinaryDenseVector;
+
+    fn mul(self, rhs: &BinaryDenseVector) -> Self::Output {
+        self.right_mul(rhs)
+    }
+}
+
+impl ops::Mul<&BinaryDenseVector> for &BinaryMatrix64 {
+    type Output = BinaryDenseVector;
+
+    fn mul(self, rhs: &BinaryDenseVector) -> Self::Output {
+        self.right_mul(rhs)
     }
 }
 
@@ -601,6 +649,13 @@ mod bench {
         let mat = random_1024();
         let v = BinaryDenseVector::from_bits(&[1; 1024]);
         b.iter(|| test::black_box(&v * mat.as_ref()));
+    }
+
+    #[bench]
+    fn bench_right_mul_1024_1024(b: &mut Bencher) {
+        let mat = random_1024();
+        let v = BinaryDenseVector::from_bits(&[1; 1024]);
+        b.iter(|| test::black_box(mat.as_ref() * &v));
     }
 
     #[bench]
